@@ -18,11 +18,13 @@ from neutron.db import provisioning_blocks
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources
 from neutron_lib.plugins.ml2 import api
+from neutron_lib.plugins import directory
 from oslo_log import log as logging
 
 from networking_generic_switch import config as gsw_conf
 from networking_generic_switch import devices
 from networking_generic_switch.devices import utils as device_utils
+from networking_generic_switch import exceptions as ngs_exc
 
 LOG = logging.getLogger(__name__)
 
@@ -393,6 +395,23 @@ class GenericSwitchDriver(api.MechanismDriver):
         if self._is_port_bound(port):
             self._unplug_port_from_network(port, context.network.current)
 
+    def _is_vlan_translation_required(self, trunk_details):
+        """Check if vlan translation is required to configure specific trunk.
+
+        :returns: True if vlan translation is required, False otherwise.
+        """
+        core_plugin = directory.get_plugin()
+        for sub_port in trunk_details.get('sub_ports', {}):
+            sp_id = sub_port['port_id']
+            sp_sid = sub_port['segmentation_id']
+            sp_port = core_plugin.get_port(context._plugin_context, sp_id)
+            sp_net = core_plugin.get_network(context._plugin_context,
+                                             sp_port['network_id'])
+            if sp_sid != sp_net['provider:segmentation_id']:
+                return True
+
+        return False
+
     def bind_port(self, context):
         """Attempt to bind a port.
 
@@ -445,7 +464,6 @@ class GenericSwitchDriver(api.MechanismDriver):
             # of the links should be processed.
             if not self._is_link_valid(port, network):
                 return
-
             is_802_3ad = self._is_802_3ad(port)
             for link in local_link_information:
                 port_id = link.get('port_id')
@@ -458,15 +476,38 @@ class GenericSwitchDriver(api.MechanismDriver):
                 segments = context.segments_to_bind
                 # If segmentation ID is None, set vlan 1
                 segmentation_id = segments[0].get('segmentation_id') or 1
+                trunk_details = port.get('trunk_details', {})
                 LOG.debug("Putting port %(port_id)s on %(switch_info)s "
                           "to vlan: %(segmentation_id)s",
                           {'port_id': port_id, 'switch_info': switch_info,
                            'segmentation_id': segmentation_id})
                 # Move port to network
-                if is_802_3ad and hasattr(switch, 'plug_bond_to_network'):
-                    switch.plug_bond_to_network(port_id, segmentation_id)
-                else:
-                    switch.plug_port_to_network(port_id, segmentation_id)
+                # START
+                try:
+                    if trunk_details:
+                        vtr = self._is_vlan_translation_required(trunk_details)
+                        switch.plug_port_to_network_trunk(
+                            port_id, segmentation_id, trunk_details, vtr)
+                    elif is_802_3ad and hasattr(switch, 'plug_bond_to_network'):
+                        switch.plug_bond_to_network(port_id, segmentation_id)
+                    else:
+                        switch.plug_port_to_network(
+                            port_id, segmentation_id)
+                except ngs_exc.GenericSwitchNotSupported as e:
+                    LOG.warning("Operation is not supported by "
+                                    "networking-generic-switch. %(err)s)",
+                                {'err': e})
+                    raise e
+                except Exception as e:
+                        LOG.error("Failed to bind port %(port_id)s in "
+                                      "segment %(segment_id)s on device "
+                                      "%(device)s due to error %(err)s",
+                                  {'port_id': port['id'],
+                                   'device': switch_info,
+                                   'segment_id': segmentation_id,
+                                   'err': e})
+                        raise e
+                # END
                 LOG.info("Successfully bound port %(port_id)s in segment "
                          "%(segment_id)s on device %(device)s",
                          {'port_id': port['id'], 'device': switch_info,

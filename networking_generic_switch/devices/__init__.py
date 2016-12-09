@@ -175,7 +175,7 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def plug_port_to_network(self, port_id, segmentation_id):
+    def plug_port_to_network(self, port_id, segmentation_id, trunk_details=None, vtr=False):
         pass
 
     @abc.abstractmethod
