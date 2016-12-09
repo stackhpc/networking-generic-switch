@@ -19,6 +19,7 @@ from unittest import mock
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2 import driver_context
 from neutron_lib.callbacks import resources
+from neutron_lib.plugins import directory
 
 from networking_generic_switch import exceptions
 from networking_generic_switch import generic_switch_mech as gsm
@@ -512,10 +513,13 @@ class TestGenericSwitchDriver(unittest.TestCase):
                                      resources.PORT,
                                      'GENERICSWITCH')
 
+    @mock.patch.object(gsm.GenericSwitchDriver,
+                       '_is_vlan_translation_required', return_value=False)
     @mock.patch.object(provisioning_blocks, 'provisioning_complete')
     def test_update_portgroup_postcommit_complete_provisioning(self,
                                                                m_pc,
-                                                               m_list):
+                                                               m_list,
+                                                               m_ivtr):
         driver = gsm.GenericSwitchDriver()
         driver.initialize()
         mock_context = mock.create_autospec(driver_context.PortContext)
