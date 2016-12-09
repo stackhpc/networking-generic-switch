@@ -81,6 +81,10 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     SAVE_CONFIGURATION = None
 
+    SET_NATIVE_VLAN = None
+
+    ALLOW_NETWORK_ON_TRUNK = None
+
     ERROR_MSG_PATTERNS = ()
     """Sequence of error message patterns.
 
@@ -243,6 +247,27 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                                       network_name=network_name)
         return self.send_commands_to_device(cmds)
 
+    @check_output('plug port trunk')
+    def plug_port_to_network_trunk(self, port, segmentation_id, trunk_details=None, vtr=False):
+        cmd_set = []
+        vts = self.ngs_config.get('vlan_translation_supported', False)
+        # NOTE(vsaienko) Always use vlan translation if it is supported.
+        if vts:
+            cmd_set.extend(self.get_trunk_port_cmds_vlan_translation(
+                port, segmentation_id, trunk_details))
+        else:
+            if vtr:
+                msg = _("Cannot bind_port VLAN aware port as switch %s "
+                        "doesn't support VLAN translation. "
+                        "But it is required.") % self.config['ip']
+                raise exc.GenericSwitchNotSupported(error=msg)
+            else:
+                cmd_set.extend(
+                    self.get_trunk_port_cmds_no_vlan_translation(
+                        port, segmentation_id, trunk_details))
+
+        self.send_commands_to_device(cmd_set)
+
     @check_output('plug port')
     def plug_port_to_network(self, port, segmentation_id):
         cmds = []
@@ -335,3 +360,19 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 raise exc.GenericSwitchNetmikoConfigError(
                     config=device_utils.sanitise_config(self.config),
                     error=msg)
+
+    def get_trunk_port_cmds_no_vlan_translation(self, port_id, segmentation_id, trunk_details):
+        cmd_set = []
+        cmd_set.extend(
+            self._format_commands(self.SET_NATIVE_VLAN,
+                                  port=port_id,
+                                  segmentation_id=segmentation_id))
+        for sub_port in trunk_details.get('sub_ports'):
+            cmd_set.extend(
+                self._format_commands(
+                    self.ALLOW_NETWORK_ON_TRUNK, port=port_id,
+                    segmentation_id=sub_port['segmentation_id']))
+        return cmd_set
+
+    def get_trunk_port_cmds_vlan_translation(self, port_id, segmentation_id, trunk_details):
+        pass

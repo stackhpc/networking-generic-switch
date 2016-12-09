@@ -69,6 +69,17 @@ class DellOS10(netmiko_devices.NetmikoSwitch):
         "exit",
     )
 
+    SET_NATIVE_VLAN = (
+        'interface {port}',
+        'switchport mode trunk',
+        'switchport access vlan {segmentation_id}',
+    )
+
+    ALLOW_NETWORK_ON_TRUNK = (
+        'interface {port}',
+        'switchport trunk allowed vlan {segmentation_id}'
+    )
+
     ERROR_MSG_PATTERNS = ()
     """Sequence of error message patterns.
 
