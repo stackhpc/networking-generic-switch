@@ -315,11 +315,30 @@ class GenericSwitchDriver(driver_api.MechanismDriver):
         state. It is up to the mechanism driver to ignore state or
         state changes that it does not know or care about.
         """
+        original_port = context.original
         port = context.current
         vnic_type = port['binding:vnic_type']
+        vif_type = port[portbindings.VIF_TYPE]
+        original_vif_type = original_port[portbindings.VIF_TYPE]
         if (vnic_type == 'baremetal' and
-                port[portbindings.VIF_TYPE] == portbindings.VIF_TYPE_OTHER):
+                vif_type == portbindings.VIF_TYPE_OTHER):
             binding_profile = port['binding:profile']
+            local_link_information = binding_profile.get(
+                'local_link_information')
+            if local_link_information:
+                switch_info = local_link_information[0].get('switch_info')
+                if switch_info not in self.switches:
+                    return
+                provisioning_blocks.provisioning_complete(
+                    context._plugin_context, port['id'], resources.PORT,
+                    GENERIC_SWITCH_ENTITY)
+        elif (vnic_type == 'baremetal' and
+                vif_type == portbindings.VIF_TYPE_UNBOUND and
+                original_vif_type == portbindings.VIF_TYPE_OTHER):
+            # The port has been unbound. This will cause the local link
+            # information to # be lost, so deconfigure the switch now while we
+            # have the required information.
+            binding_profile = original_port['binding:profile']
             local_link_information = binding_profile.get(
                 'local_link_information')
             if not local_link_information:
@@ -327,9 +346,16 @@ class GenericSwitchDriver(driver_api.MechanismDriver):
             switch_info = local_link_information[0].get('switch_info')
             if switch_info not in self.switches:
                 return
-            provisioning_blocks.provisioning_complete(
-                context._plugin_context, port['id'], resources.PORT,
-                GENERIC_SWITCH_ENTITY)
+            port_id = local_link_information[0].get('port_id')
+            network = context.network.current
+            # If segmentation ID is None, set vlan 1
+            segmentation_id = network.get('provider:segmentation_id', '1')
+            LOG.debug("Removing unbound port {port} on {switch_info} from "
+                      "vlan: {segmentation_id}".format(
+                          port=port_id,
+                          switch_info=switch_info,
+                          segmentation_id=segmentation_id))
+            self.switches[switch_info].delete_port(port_id, segmentation_id)
 
     def delete_port_precommit(self, context):
         """Delete resources of a port.
