@@ -91,6 +91,7 @@ class TestNetmikoSwitch(NetmikoSwitchTestBase):
             with self.switch._get_connection():
                 self.fail()
 
+        # FIXME: This takes 64 seconds.
         self.assertRaises(exc.GenericSwitchNetmikoConnectError, get_connection)
         m_sleep.assert_has_calls([mock.call(10)] * 8)
 

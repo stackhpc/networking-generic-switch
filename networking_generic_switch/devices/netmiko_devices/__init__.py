@@ -48,10 +48,6 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             raise exc.GenericSwitchNetmikoNotSupported(
                 device_type=device_type)
         self.config['device_type'] = device_type
-        self.ssh_connect_attempts = self.config.pop(
-            'ngs_ssh_connect_attempts', 10)
-        self.ssh_connect_interval = self.config.pop(
-            'ngs_ssh_connect_interval', 10)
 
     def _format_commands(self, commands, **kwargs):
         if not commands:
@@ -83,10 +79,12 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             reraise=True,
             # Retry on SSH connection errors.
             retry=tenacity.retry_if_exception_type(retry_exc_types),
-            # Stop after the configured number of attempts.
-            stop=tenacity.stop_after_attempt(self.ssh_connect_attempts),
+            # Stop after the configured timeout.
+            stop=tenacity.stop_after_delay(
+                int(self.ngs_config['ngs_ssh_connect_timeout'])),
             # Wait for the configured interval between attempts.
-            wait=tenacity.wait_fixed(self.ssh_connect_interval),
+            wait=tenacity.wait_fixed(
+                int(self.ngs_config['ngs_ssh_connect_interval'])),
             # Override the default sleep to allow for easier unit testing.
             sleep=self._sleep,
         )
