@@ -41,6 +41,10 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     DELETE_PORT = None
 
+    PLUG_TRUNK_PORT_TO_NETWORK = None
+
+    UNPLUG_TRUNK_PORT_FROM_NETWORK = None
+
     SAVE_CONFIGURATION = None
 
     def __init__(self, device_cfg):
@@ -69,7 +73,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     def _format_commands(self, commands, **kwargs):
         if not commands:
-            return
+            return []
         if not all(kwargs.values()):
             raise exc.GenericSwitchNetmikoMethodError(cmds=commands,
                                                       args=kwargs)
@@ -149,15 +153,24 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         # NOTE(zhenguo): Remove dashes from uuid as on most devices 32 chars
         # is the max length of vlan name.
         network_id = uuid.UUID(network_id).hex
-        self.send_commands_to_device(
-            self._format_commands(self.ADD_NETWORK,
-                                  segmentation_id=segmentation_id,
-                                  network_id=network_id))
+        cmds = self._format_commands(self.ADD_NETWORK,
+                                     segmentation_id=segmentation_id,
+                                     network_id=network_id)
+        for port in self._get_trunk_ports():
+            cmds += self._format_commands(self.PLUG_TRUNK_PORT_TO_NETWORK,
+                                          port=port,
+                                          segmentation_id=segmentation_id)
+        self.send_commands_to_device(cmds)
 
     def del_network(self, segmentation_id):
-        self.send_commands_to_device(
-            self._format_commands(self.DELETE_NETWORK,
-                                  segmentation_id=segmentation_id))
+        cmds = []
+        for port in self._get_trunk_ports():
+            cmds += self._format_commands(self.UNPLUG_TRUNK_PORT_FROM_NETWORK,
+                                          port=port,
+                                          segmentation_id=segmentation_id)
+        cmds += self._format_commands(self.DELETE_NETWORK,
+                                      segmentation_id=segmentation_id)
+        self.send_commands_to_device(cmds)
 
     def plug_port_to_network(self, port, segmentation_id):
         self.send_commands_to_device(
