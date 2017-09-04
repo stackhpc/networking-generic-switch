@@ -86,7 +86,7 @@ class GenericSwitchDevice(object):
         pass
 
     @abc.abstractmethod
-    def del_network(self, segmentation_id):
+    def del_network(self, segmentation_id, network_id):
         pass
 
     @abc.abstractmethod
