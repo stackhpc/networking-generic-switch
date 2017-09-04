@@ -29,6 +29,7 @@ Supported Devices
 * Arista EOS
 * Dell Force10
 * Brocade ICX (FastIron)
+* Juniper Junos
 
 This Mechanism Driver architecture allows easily to add more devices
 of any type.
@@ -125,6 +126,15 @@ for the Brocade FastIron (ICX) device::
     username = admin
     password = password
 
+for the Juniper device::
+
+    [genericswitch:hostname-for-juniper]
+    device_type = netmiko_juniper
+    ip = <switch mgmt ip address>
+    username = admin
+    password = password
+    ngs_commit_timeout = <optional commit timeout (seconds)>
+    ngs_commit_interval = <optional commit interval (seconds)>
 
 Additionally the ``GenericSwitch`` mechanism driver needs to be enabled from
 the ml2 config file ``/etc/neutron/plugins/ml2/ml2_conf.ini``::
