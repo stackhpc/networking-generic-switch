@@ -161,7 +161,13 @@ class GenericSwitchDriver(driver_api.MechanismDriver):
             # Delete vlan on all switches from this driver
             for switch_name, switch in self.switches.items():
                 try:
-                    switch.del_network(segmentation_id)
+                    # NOTE(mgoddard): The del_network method was modified to
+                    # accept the network ID. The switch object may still be
+                    # implementing the old interface, so retry on a TypeError.
+                    try:
+                        switch.del_network(segmentation_id, network['id'])
+                    except TypeError:
+                        switch.del_network(segmentation_id)
                 except Exception as e:
                     LOG.error("Failed to delete network %(net_id)s "
                               "on device: %(switch)s, reason: %(exc)s",
