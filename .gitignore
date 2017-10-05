@@ -27,6 +27,7 @@ develop-eggs
 .venv
 .coverage
 cover
+.stestr
 
 # Others
 .*.swp

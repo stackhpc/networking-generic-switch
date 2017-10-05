@@ -127,6 +127,9 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         with net_connect:
             yield net_connect
 
+    def send_config_set(self, net_connect, config_commands):
+        return net_connect.send_config_set(config_commands=config_commands)
+
     def send_commands_to_device(self, cmd_set):
         if not cmd_set:
             LOG.debug("Nothing to execute")
@@ -136,8 +139,8 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
                 with self._get_connection() as net_connect:
                     net_connect.enable()
-                    output = net_connect.send_config_set(
-                        config_commands=cmd_set)
+                    output = self.send_config_set(
+                        net_connect, config_commands=cmd_set)
                     # NOTE (vsaienko) always save configuration
                     # when configuration is applied successfully.
                     self.save_configuration(net_connect)

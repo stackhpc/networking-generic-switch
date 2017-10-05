@@ -11,6 +11,11 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+import time
+
+import tenacity
+
+from netmiko.py23_compat import string_types
 
 from networking_generic_switch.devices import netmiko_devices
 
@@ -48,6 +53,44 @@ class Juniper(netmiko_devices.NetmikoSwitch):
         'delete interface {port} unit 0 family ethernet-switching '
         'vlan members {segmentation_id}',
     )
+
+    @tenacity.retry(reraise=True, stop=tenacity.stop_after_attempt(3),
+                    wait=tenacity.wait_fixed(14))
+    def send_config_set(self, net_connect, config_commands=None,
+                        exit_config_mode=True, delay_factor=1, max_loops=150,
+                        strip_prompt=False, strip_command=False,
+                        config_mode_cmd='configure private'):
+        """Temporarily overriding the send_config_set method from netmiko.
+
+        Temporarily overriding the send_config_set method from netmiko, until
+        upstream patch is accepted:
+
+        https://github.com/ktbyers/netmiko/pull/593
+
+        """
+
+        delay_factor = net_connect.select_delay_factor(delay_factor)
+        if config_commands is None:
+            return ''
+        elif isinstance(config_commands, string_types):
+            config_commands = (config_commands,)
+
+        if not hasattr(config_commands, '__iter__'):
+            raise ValueError("Invalid argument passed into send_config_set")
+
+        # Send config commands
+        output = net_connect.config_mode(config_mode_cmd)
+        for cmd in config_commands:
+            net_connect.write_channel(net_connect.normalize_cmd(cmd))
+            time.sleep(delay_factor * .5)
+
+        # Gather output
+        output += net_connect._read_channel_timing(
+            delay_factor=delay_factor, max_loops=max_loops)
+        if exit_config_mode:
+            output += net_connect.exit_config_mode()
+        output = net_connect._sanitize_output(output)
+        return output
 
     def save_configuration(self, net_connect):
         """Save the device's configuration.
