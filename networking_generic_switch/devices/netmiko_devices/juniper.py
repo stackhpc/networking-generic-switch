@@ -13,6 +13,8 @@
 #    under the License.
 import time
 
+import tenacity
+
 from netmiko.py23_compat import string_types
 
 from networking_generic_switch.devices import netmiko_devices
@@ -52,6 +54,8 @@ class Juniper(netmiko_devices.NetmikoSwitch):
         'vlan members {segmentation_id}',
     )
 
+    @tenacity.retry(reraise=True, stop=tenacity.stop_after_attempt(3),
+                    wait=tenacity.wait_fixed(14))
     def send_config_set(self, net_connect, config_commands=None,
                         exit_config_mode=True, delay_factor=1, max_loops=150,
                         strip_prompt=False, strip_command=False,

@@ -140,7 +140,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 with self._get_connection() as net_connect:
                     net_connect.enable()
                     output = self.send_config_set(
-                         net_connect, config_commands=cmd_set)
+                        net_connect, config_commands=cmd_set)
                     # NOTE (vsaienko) always save configuration
                     # when configuration is applied successfully.
                     self.save_configuration(net_connect)
