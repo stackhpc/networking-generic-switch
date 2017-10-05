@@ -14,7 +14,6 @@
 
 import atexit
 import contextlib
-import time
 import uuid
 
 import netmiko
@@ -24,12 +23,9 @@ import paramiko
 import tenacity
 from tooz import coordination
 
-from netmiko.py23_compat import string_types
-
 from networking_generic_switch import devices
 from networking_generic_switch import exceptions as exc
 from networking_generic_switch import locking as ngs_lock
-
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -143,7 +139,6 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
                 with self._get_connection() as net_connect:
                     net_connect.enable()
-
                     output = self.send_config_set(
                          net_connect, config_commands=cmd_set)
                     # NOTE (vsaienko) always save configuration
