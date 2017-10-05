@@ -35,42 +35,6 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-def send_config_set(net_connect, config_commands=None, exit_config_mode=True,
-                    delay_factor=1, max_loops=150, strip_prompt=False,
-                    strip_command=False, config_mode_cmd=''):
-    """Temporarily overriding the send_config_set method from netmiko.
-
-    Temporarily overriding the send_config_set method from netmiko, until
-    upstream patch is accepted:
-
-    https://github.com/ktbyers/netmiko/pull/593
-
-    """
-
-    delay_factor = net_connect.select_delay_factor(delay_factor)
-    if config_commands is None:
-        return ''
-    elif isinstance(config_commands, string_types):
-        config_commands = (config_commands,)
-
-    if not hasattr(config_commands, '__iter__'):
-        raise ValueError("Invalid argument passed into send_config_set")
-
-    # Send config commands
-    output = net_connect.config_mode(config_mode_cmd)
-    for cmd in config_commands:
-        net_connect.write_channel(net_connect.normalize_cmd(cmd))
-        time.sleep(delay_factor * .5)
-
-    # Gather output
-    output += net_connect._read_channel_timing(
-        delay_factor=delay_factor, max_loops=max_loops)
-    if exit_config_mode:
-        output += net_connect.exit_config_mode()
-    output = net_connect._sanitize_output(output)
-    return output
-
-
 class NetmikoSwitch(devices.GenericSwitchDevice):
 
     ADD_NETWORK = None
@@ -167,6 +131,9 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         with net_connect:
             yield net_connect
 
+    def send_config_set(self, net_connect, config_commands):
+        return net_connect.send_config_set(config_commands=config_commands)
+
     def send_commands_to_device(self, cmd_set):
         if not cmd_set:
             LOG.debug("Nothing to execute")
@@ -177,14 +144,8 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 with self._get_connection() as net_connect:
                     net_connect.enable()
 
-                    # output = net_connect.send_config_set(
-                    #     config_mode_cmd='configure private',
-                    #     config_commands=cmd_set)
-                    # FIXME: use the above, commented out version of
-                    # send_config_set once netmiko patch is accepted upstream.
-                    output = send_config_set(
-                        net_connect, config_mode_cmd='configure private',
-                        config_commands=cmd_set)
+                    output = self.send_config_set(
+                         net_connect, config_commands=cmd_set)
                     # NOTE (vsaienko) always save configuration
                     # when configuration is applied successfully.
                     self.save_configuration(net_connect)
