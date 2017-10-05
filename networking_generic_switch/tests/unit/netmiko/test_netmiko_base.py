@@ -185,6 +185,7 @@ class TestNetmikoSwitch(NetmikoSwitchTestBase):
         connect_mock = mock.MagicMock(SAVE_CONFIGURATION=None)
         connect_mock.__enter__.return_value = connect_mock
         nm_mock.return_value = connect_mock
+
         lock_mock.return_value.__enter__.return_value = lock_mock
         switch.send_commands_to_device(['spam ham'])
 

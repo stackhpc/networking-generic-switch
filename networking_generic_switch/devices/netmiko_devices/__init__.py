@@ -14,6 +14,7 @@
 
 import atexit
 import contextlib
+import time
 import uuid
 
 import netmiko
@@ -23,12 +24,51 @@ import paramiko
 import tenacity
 from tooz import coordination
 
+from netmiko.py23_compat import string_types
+
 from networking_generic_switch import devices
 from networking_generic_switch import exceptions as exc
 from networking_generic_switch import locking as ngs_lock
 
+
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
+
+
+def send_config_set(net_connect, config_commands=None, exit_config_mode=True,
+                    delay_factor=1, max_loops=150, strip_prompt=False,
+                    strip_command=False, config_mode_cmd=''):
+    """Temporarily overriding the send_config_set method from netmiko.
+
+    Temporarily overriding the send_config_set method from netmiko, until
+    upstream patch is accepted:
+
+    https://github.com/ktbyers/netmiko/pull/593
+
+    """
+
+    delay_factor = net_connect.select_delay_factor(delay_factor)
+    if config_commands is None:
+        return ''
+    elif isinstance(config_commands, string_types):
+        config_commands = (config_commands,)
+
+    if not hasattr(config_commands, '__iter__'):
+        raise ValueError("Invalid argument passed into send_config_set")
+
+    # Send config commands
+    output = net_connect.config_mode(config_mode_cmd)
+    for cmd in config_commands:
+        net_connect.write_channel(net_connect.normalize_cmd(cmd))
+        time.sleep(delay_factor * .5)
+
+    # Gather output
+    output += net_connect._read_channel_timing(
+        delay_factor=delay_factor, max_loops=max_loops)
+    if exit_config_mode:
+        output += net_connect.exit_config_mode()
+    output = net_connect._sanitize_output(output)
+    return output
 
 
 class NetmikoSwitch(devices.GenericSwitchDevice):
@@ -136,7 +176,14 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
                 with self._get_connection() as net_connect:
                     net_connect.enable()
-                    output = net_connect.send_config_set(
+
+                    # output = net_connect.send_config_set(
+                    #     config_mode_cmd='configure private',
+                    #     config_commands=cmd_set)
+                    # FIXME: use the above, commented out version of
+                    # send_config_set once netmiko patch is accepted upstream.
+                    output = send_config_set(
+                        net_connect, config_mode_cmd='configure private',
                         config_commands=cmd_set)
                     # NOTE (vsaienko) always save configuration
                     # when configuration is applied successfully.
