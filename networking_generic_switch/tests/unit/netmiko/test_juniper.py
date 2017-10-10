@@ -51,7 +51,8 @@ class TestNetmikoJuniper(test_netmiko_base.NetmikoSwitchTestBase):
                 'NetmikoSwitch.send_commands_to_device')
     def test_del_network(self, mock_exec):
         self.switch.del_network(33, '0ae071f55be943e480eae41fefe85b21')
-        mock_exec.assert_called_with(['delete vlans 0ae071f55be943e480eae41fefe85b21'])
+        mock_exec.assert_called_with(
+            ['delete vlans 0ae071f55be943e480eae41fefe85b21'])
 
     @mock.patch('networking_generic_switch.devices.netmiko_devices.'
                 'NetmikoSwitch.send_commands_to_device')
