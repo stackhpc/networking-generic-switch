@@ -49,6 +49,23 @@ class Juniper(netmiko_devices.NetmikoSwitch):
         'vlan members {segmentation_id}',
     )
 
+    def send_config_set(self, net_connect, cmd_set):
+        """Send a set of configuration lines to the device.
+
+        :param net_connect: a netmiko connection object.
+        :param cmd_set: a list of configuration lines to send.
+        :returns: The output of the configuration commands.
+        """
+        # We use the private configuration mode, which hides the configuration
+        # changes of concurrent sessions from us, and discards uncommitted
+        # changes on termination of the session.
+        net_connect.config_mode(config_command='configure private')
+
+        # Don't exit configuration mode, as we still need to commit the changes
+        # in save_configuration().
+        return net_connect.send_config_set(config_commands=cmd_set,
+                                           exit_config_mode=False)
+
     def save_configuration(self, net_connect):
         """Save the device's configuration.
 

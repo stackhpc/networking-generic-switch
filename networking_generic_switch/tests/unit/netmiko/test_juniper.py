@@ -13,6 +13,7 @@
 #    under the License.
 
 import mock
+import netmiko
 
 from networking_generic_switch.devices.netmiko_devices import juniper
 from networking_generic_switch.tests.unit.netmiko import test_netmiko_base
@@ -83,6 +84,15 @@ class TestNetmikoJuniper(test_netmiko_base.NetmikoSwitchTestBase):
         mock_exec.assert_called_with(
             ['delete interface 3333 unit 0 family ethernet-switching '
              'vlan members'])
+
+    def test_send_config_set(self):
+        connect_mock = mock.MagicMock(netmiko.base_connection.BaseConnection)
+        connect_mock.send_config_set.return_value = 'fake output'
+        result = self.switch.send_config_set(connect_mock, ['spam ham aaaa'])
+        self.assertFalse(connect_mock.enable.called)
+        connect_mock.send_config_set.assert_called_once_with(
+            config_commands=['spam ham aaaa'], exit_config_mode=False)
+        self.assertEqual('fake output', result)
 
     def test_save_configuration(self):
         mock_connection = mock.Mock()
