@@ -14,8 +14,11 @@
 
 import mock
 import netmiko
+import tenacity
 
+from networking_generic_switch.devices import netmiko_devices
 from networking_generic_switch.devices.netmiko_devices import juniper
+from networking_generic_switch import exceptions as exc
 from networking_generic_switch.tests.unit.netmiko import test_netmiko_base
 
 
@@ -98,6 +101,60 @@ class TestNetmikoJuniper(test_netmiko_base.NetmikoSwitchTestBase):
         mock_connection = mock.Mock()
         self.switch.save_configuration(mock_connection)
         mock_connection.commit.assert_called_once_with()
+
+    @mock.patch.object(netmiko_devices.tenacity, 'wait_fixed',
+                       return_value=tenacity.wait_fixed(0.01))
+    @mock.patch.object(netmiko_devices.tenacity, 'stop_after_delay',
+                       return_value=tenacity.stop_after_delay(0.1))
+    def test_save_configuration_timeout(self, m_stop, m_wait):
+        mock_connection = mock.Mock()
+        output = """
+error: configuration database locked by:
+  user terminal p0 (pid 1234) on since 2017-1-1 00:00:00 UTC
+      exclusive private [edit]
+
+{master:0}[edit]"""
+        mock_connection.commit.side_effect = ValueError(
+            "Commit failed with the following errors:\n\n{0}".format(output))
+
+        self.assertRaisesRegexp(exc.GenericSwitchNetmikoConfigError,
+                                "Reached timeout waiting for",
+                                self.switch.save_configuration,
+                                mock_connection)
+        self.assertGreater(mock_connection.commit.call_count, 1)
+        m_stop.assert_called_once_with(60)
+        m_wait.assert_called_once_with(5)
+
+    def test_save_configuration_error(self):
+        mock_connection = mock.Mock()
+        output = """
+[edit vlans]
+  'duplicate-vlan'
+    l2ald: Duplicate vlan-id exists for vlan duplicate-vlan
+[edit vlans]
+  Failed to parse vlan hierarchy completely
+error: configuration check-out failed
+
+{master:0}[edit]"""
+        mock_connection.commit.side_effect = ValueError(
+            "Commit failed with the following errors:\n\n{0}".format(output))
+
+        self.assertRaisesRegexp(exc.GenericSwitchNetmikoConfigError,
+                                "Failed to commit configuration",
+                                self.switch.save_configuration,
+                                mock_connection)
+        mock_connection.commit.assert_called_once_with()
+
+    @mock.patch.object(netmiko_devices.tenacity, 'wait_fixed')
+    @mock.patch.object(netmiko_devices.tenacity, 'stop_after_delay')
+    def test_save_configuration_non_default_timing(self, m_stop, m_wait):
+        self.switch = self._make_switch_device({'ngs_commit_timeout': 42,
+                                                'ngs_commit_interval': 43})
+        mock_connection = mock.Mock()
+        self.switch.save_configuration(mock_connection)
+        mock_connection.commit.assert_called_once_with()
+        m_stop.assert_called_once_with(42)
+        m_wait.assert_called_once_with(43)
 
     def test__format_commands(self):
         cmd_set = self.switch._format_commands(
