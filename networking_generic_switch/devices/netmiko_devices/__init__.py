@@ -24,6 +24,7 @@ import tenacity
 from tooz import coordination
 
 from networking_generic_switch import devices
+from networking_generic_switch.devices import utils as device_utils
 from networking_generic_switch import exceptions as exc
 from networking_generic_switch import locking as ngs_lock
 
@@ -117,11 +118,11 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         except tenacity.RetryError as e:
             LOG.error("Reached maximum SSH connection attempts, not retrying")
             raise exc.GenericSwitchNetmikoConnectError(
-                config=self.config, error=e)
+                config=device_utils.sanitise_config(self.config), error=e)
         except Exception as e:
             LOG.error("Unexpected exception during SSH connection")
             raise exc.GenericSwitchNetmikoConnectError(
-                config=self.config, error=e)
+                config=device_utils.sanitise_config(self.config), error=e)
 
         # Now yield the connection to the caller.
         with net_connect:
@@ -140,8 +141,8 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                     # when configuration is applied successfully.
                     self.save_configuration(net_connect)
         except Exception as e:
-            raise exc.GenericSwitchNetmikoConnectError(config=self.config,
-                                                       error=e)
+            raise exc.GenericSwitchNetmikoConnectError(
+                config=device_utils.sanitise_config(self.config), error=e)
 
         LOG.debug(output)
         return output
