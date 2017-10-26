@@ -13,8 +13,12 @@
 #    under the License.
 
 import mock
+import netmiko
+import tenacity
 
+from networking_generic_switch.devices import netmiko_devices
 from networking_generic_switch.devices.netmiko_devices import juniper
+from networking_generic_switch import exceptions as exc
 from networking_generic_switch.tests.unit.netmiko import test_netmiko_base
 
 
@@ -51,7 +55,8 @@ class TestNetmikoJuniper(test_netmiko_base.NetmikoSwitchTestBase):
                 'NetmikoSwitch.send_commands_to_device')
     def test_del_network(self, mock_exec):
         self.switch.del_network(33, '0ae071f55be943e480eae41fefe85b21')
-        mock_exec.assert_called_with(['delete vlans 0ae071f55be943e480eae41fefe85b21'])
+        mock_exec.assert_called_with(
+            ['delete vlans 0ae071f55be943e480eae41fefe85b21'])
 
     @mock.patch('networking_generic_switch.devices.netmiko_devices.'
                 'NetmikoSwitch.send_commands_to_device')
@@ -83,10 +88,73 @@ class TestNetmikoJuniper(test_netmiko_base.NetmikoSwitchTestBase):
             ['delete interface 3333 unit 0 family ethernet-switching '
              'vlan members'])
 
+    def test_send_config_set(self):
+        connect_mock = mock.MagicMock(netmiko.base_connection.BaseConnection)
+        connect_mock.send_config_set.return_value = 'fake output'
+        result = self.switch.send_config_set(connect_mock, ['spam ham aaaa'])
+        self.assertFalse(connect_mock.enable.called)
+        connect_mock.send_config_set.assert_called_once_with(
+            config_commands=['spam ham aaaa'], exit_config_mode=False)
+        self.assertEqual('fake output', result)
+
     def test_save_configuration(self):
         mock_connection = mock.Mock()
         self.switch.save_configuration(mock_connection)
         mock_connection.commit.assert_called_once_with()
+
+    @mock.patch.object(netmiko_devices.tenacity, 'wait_fixed',
+                       return_value=tenacity.wait_fixed(0.01))
+    @mock.patch.object(netmiko_devices.tenacity, 'stop_after_delay',
+                       return_value=tenacity.stop_after_delay(0.1))
+    def test_save_configuration_timeout(self, m_stop, m_wait):
+        mock_connection = mock.Mock()
+        output = """
+error: configuration database locked by:
+  user terminal p0 (pid 1234) on since 2017-1-1 00:00:00 UTC
+      exclusive private [edit]
+
+{master:0}[edit]"""
+        mock_connection.commit.side_effect = ValueError(
+            "Commit failed with the following errors:\n\n{0}".format(output))
+
+        self.assertRaisesRegexp(exc.GenericSwitchNetmikoConfigError,
+                                "Reached timeout waiting for",
+                                self.switch.save_configuration,
+                                mock_connection)
+        self.assertGreater(mock_connection.commit.call_count, 1)
+        m_stop.assert_called_once_with(60)
+        m_wait.assert_called_once_with(5)
+
+    def test_save_configuration_error(self):
+        mock_connection = mock.Mock()
+        output = """
+[edit vlans]
+  'duplicate-vlan'
+    l2ald: Duplicate vlan-id exists for vlan duplicate-vlan
+[edit vlans]
+  Failed to parse vlan hierarchy completely
+error: configuration check-out failed
+
+{master:0}[edit]"""
+        mock_connection.commit.side_effect = ValueError(
+            "Commit failed with the following errors:\n\n{0}".format(output))
+
+        self.assertRaisesRegexp(exc.GenericSwitchNetmikoConfigError,
+                                "Failed to commit configuration",
+                                self.switch.save_configuration,
+                                mock_connection)
+        mock_connection.commit.assert_called_once_with()
+
+    @mock.patch.object(netmiko_devices.tenacity, 'wait_fixed')
+    @mock.patch.object(netmiko_devices.tenacity, 'stop_after_delay')
+    def test_save_configuration_non_default_timing(self, m_stop, m_wait):
+        self.switch = self._make_switch_device({'ngs_commit_timeout': 42,
+                                                'ngs_commit_interval': 43})
+        mock_connection = mock.Mock()
+        self.switch.save_configuration(mock_connection)
+        mock_connection.commit.assert_called_once_with()
+        m_stop.assert_called_once_with(42)
+        m_wait.assert_called_once_with(43)
 
     def test__format_commands(self):
         cmd_set = self.switch._format_commands(
