@@ -28,6 +28,7 @@ Supported Devices
 * OpenVSwitch
 * Arista EOS
 * Dell Force10
+* Dell PowerConnect
 * Brocade ICX (FastIron)
 * Juniper Junos
 
@@ -113,6 +114,15 @@ for the Dell Force10 device::
 
     [genericswitch:dell-hostname]
     device_type = netmiko_dell_force10
+    ip = <switch mgmt ip address>
+    username = admin
+    password = password
+    secret = secret
+
+for the Dell PowerConnect device::
+
+    [genericswitch:dell-hostname]
+    device_type = netmiko_dell_powerconnect
     ip = <switch mgmt ip address>
     username = admin
     password = password
