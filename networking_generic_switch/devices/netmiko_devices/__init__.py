@@ -155,7 +155,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             raise exc.GenericSwitchNetmikoConnectError(
                 config=device_utils.sanitise_config(self.config), error=e)
 
-        LOG.debug(output)
+        LOG.info(output)
         return output
 
     def add_network(self, segmentation_id, network_id):
