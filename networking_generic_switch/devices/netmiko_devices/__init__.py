@@ -48,6 +48,13 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     SAVE_CONFIGURATION = None
 
+    ERROR_MSG_PATTERNS = ()
+    """Sequence of error message patterns.
+
+    Sequence of re.RegexObject objects representing patterns to check for in
+    device output that indicate a failure to apply configuration.
+    """
+
     def __init__(self, device_cfg):
         super(NetmikoSwitch, self).__init__(device_cfg)
         device_type = self.config.get('device_type', '')
@@ -148,7 +155,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             raise exc.GenericSwitchNetmikoConnectError(
                 config=device_utils.sanitise_config(self.config), error=e)
 
-        LOG.debug(output)
+        LOG.info(output)
         return output
 
     def add_network(self, segmentation_id, network_id):
@@ -162,7 +169,8 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             cmds += self._format_commands(self.ADD_NETWORK_TO_TRUNK,
                                           port=port,
                                           segmentation_id=segmentation_id)
-        self.send_commands_to_device(cmds)
+        output = self.send_commands_to_device(cmds)
+        self.check_output(output, 'add network')
 
     def del_network(self, segmentation_id, network_id):
         # NOTE(zhenguo): Remove dashes from uuid as on most devices 32 chars
@@ -176,19 +184,22 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         cmds += self._format_commands(self.DELETE_NETWORK,
                                       segmentation_id=segmentation_id,
                                       network_id=network_id)
-        self.send_commands_to_device(cmds)
+        output = self.send_commands_to_device(cmds)
+        self.check_output(output, 'delete network')
 
     def plug_port_to_network(self, port, segmentation_id):
-        self.send_commands_to_device(
+        output = self.send_commands_to_device(
             self._format_commands(self.PLUG_PORT_TO_NETWORK,
                                   port=port,
                                   segmentation_id=segmentation_id))
+        self.check_output(output, 'plug port')
 
     def delete_port(self, port, segmentation_id):
-        self.send_commands_to_device(
+        output = self.send_commands_to_device(
             self._format_commands(self.DELETE_PORT,
                                   port=port,
                                   segmentation_id=segmentation_id))
+        self.check_output(output, 'unplug port')
 
     def send_config_set(self, net_connect, cmd_set):
         """Send a set of configuration lines to the device.
@@ -208,3 +219,28 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         if self.SAVE_CONFIGURATION:
             for cmd in self.SAVE_CONFIGURATION:
                 net_connect.send_command(cmd)
+
+    def check_output(self, output, operation):
+        """Check the output from the device following an operation.
+
+        Drivers should implement this method to handle output from devices and
+        perform any checks necessary to validate that the configuration was
+        applied successfully.
+
+        :param output: Output from the device.
+        :param operation: Operation being attempted. One of 'add network',
+            'delete network', 'plug port', 'unplug port'.
+        :raises: GenericSwitchNetmikoConfigError if the driver detects that an
+            error has occurred.
+        """
+        if not output:
+            return
+
+        for pattern in self.ERROR_MSG_PATTERNS:
+            if pattern.search(output):
+                msg = ("Found invalid configuration in device response. "
+                       "Operation: %(operation)s. Output: %(output)s" %
+                       {'operation': operation, 'output': output})
+                raise exc.GenericSwitchNetmikoConfigError(
+                    config=device_utils.sanitise_config(self.config),
+                    error=msg)
