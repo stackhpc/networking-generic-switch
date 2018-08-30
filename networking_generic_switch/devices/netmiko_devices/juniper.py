@@ -55,6 +55,14 @@ class Juniper(netmiko_devices.NetmikoSwitch):
         'vlan members',
     )
 
+    ENABLE_PORT = (
+        'delete interface {port} disable',
+    )
+
+    DISABLE_PORT = (
+        'set interface {port} disable',
+    )
+
     PLUG_TRUNK_PORT_TO_NETWORK = (
         'set interface {port} unit 0 family ethernet-switching '
         'vlan members {segmentation_id}',
