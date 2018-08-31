@@ -78,9 +78,25 @@ class TestNetmikoSwitch(NetmikoSwitchTestBase):
 
     @mock.patch('networking_generic_switch.devices.netmiko_devices.'
                 'NetmikoSwitch.send_commands_to_device')
+    def test_plug_port_to_network_disable_inactive(self, m_sctd):
+        switch = self._make_switch_device(
+            {'ngs_disable_inactive_ports': 'true'})
+        switch.plug_port_to_network(2222, 22)
+        m_sctd.assert_called_with([])
+
+    @mock.patch('networking_generic_switch.devices.netmiko_devices.'
+                'NetmikoSwitch.send_commands_to_device')
     def test_delete_port(self, m_sctd):
         self.switch.delete_port(2222, 22)
-        m_sctd.assert_called_with(None)
+        m_sctd.assert_called_with([])
+
+    @mock.patch('networking_generic_switch.devices.netmiko_devices.'
+                'NetmikoSwitch.send_commands_to_device')
+    def test_delete_port_disable_inactive(self, m_sctd):
+        switch = self._make_switch_device(
+            {'ngs_disable_inactive_ports': 'true'})
+        switch.delete_port(2222, 22)
+        m_sctd.assert_called_with([])
 
     def test__format_commands(self):
         self.switch._format_commands(
