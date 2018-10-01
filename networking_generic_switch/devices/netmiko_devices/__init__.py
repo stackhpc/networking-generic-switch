@@ -46,6 +46,10 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     REMOVE_NETWORK_FROM_TRUNK = None
 
+    ENABLE_PORT = None
+
+    DISABLE_PORT = None
+
     SAVE_CONFIGURATION = None
 
     ERROR_MSG_PATTERNS = ()
@@ -188,18 +192,26 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         self.check_output(output, 'delete network')
 
     def plug_port_to_network(self, port, segmentation_id):
-        output = self.send_commands_to_device(
-            self._format_commands(self.PLUG_PORT_TO_NETWORK,
-                                  port=port,
-                                  segmentation_id=segmentation_id))
+        cmds = []
+        if self._disable_inactive_ports() and self.ENABLE_PORT:
+            cmds += self._format_commands(self.ENABLE_PORT, port=port)
+        cmds += self._format_commands(
+            self.PLUG_PORT_TO_NETWORK,
+            port=port,
+            segmentation_id=segmentation_id)
+        output = self.send_commands_to_device(cmds)
         self.check_output(output, 'plug port')
+        return output
 
     def delete_port(self, port, segmentation_id):
-        output = self.send_commands_to_device(
-            self._format_commands(self.DELETE_PORT,
-                                  port=port,
-                                  segmentation_id=segmentation_id))
+        cmds = self._format_commands(self.DELETE_PORT,
+                                     port=port,
+                                     segmentation_id=segmentation_id)
+        if self._disable_inactive_ports() and self.DISABLE_PORT:
+            cmds += self._format_commands(self.DISABLE_PORT, port=port)
+        output = self.send_commands_to_device(cmds)
         self.check_output(output, 'unplug port')
+        return
 
     def send_config_set(self, net_connect, cmd_set):
         """Send a set of configuration lines to the device.
