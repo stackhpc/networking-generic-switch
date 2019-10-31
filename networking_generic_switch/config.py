@@ -30,6 +30,16 @@ coordination_opts = [
 
 CONF.register_opts(coordination_opts, group='ngs_coordination')
 
+threadpool_opts = [
+    cfg.IntOpt('size',
+               min=1,
+               default=100,
+               help='Number of threads in pool used for parallel execution '
+                    'of operations.'),
+]
+
+CONF.register_opts(threadpool_opts, group='ngs_threadpool')
+
 
 def get_devices():
     """Parse supplied config files and fetch defined supported devices."""
