@@ -14,16 +14,20 @@
 
 import sys
 
+import eventlet
 from neutron.db import provisioning_blocks
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources
 from neutron_lib.plugins.ml2 import api
+from oslo_config import cfg
 from oslo_log import log as logging
 import six
 
 from networking_generic_switch import config as gsw_conf
 from networking_generic_switch import devices
 from networking_generic_switch.devices import utils as device_utils
+
+CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
 
@@ -48,6 +52,7 @@ class GenericSwitchDriver(api.MechanismDriver):
         LOG.info('Devices %s have been loaded', self.switches.keys())
         if not self.switches:
             LOG.error('No devices have been loaded')
+        self.pool = eventlet.GreenPool(size=CONF.ngs_threadpool.size)
 
     def create_network_precommit(self, context):
         """Allocate resources for a new network.
@@ -80,22 +85,25 @@ class GenericSwitchDriver(api.MechanismDriver):
         segmentation_id = network['provider:segmentation_id']
         physnet = network['provider:physical_network']
 
+        def _add_network(switch_name, switch):
+            try:
+                switch.add_network(segmentation_id, network_id)
+            except Exception as e:
+                LOG.error("Failed to create network %(net_id)s "
+                          "on device: %(switch)s, reason: %(exc)s",
+                          {'net_id': network_id,
+                           'switch': switch_name,
+                           'exc': e})
+                raise
+            else:
+                LOG.info('Network %(net_id)s has been added on device '
+                         '%(device)s', {'net_id': network['id'],
+                                        'device': switch_name})
+
         if provider_type == 'vlan' and segmentation_id:
             # Create vlan on all switches from this driver
-            for switch_name, switch in self._get_devices_by_physnet(physnet):
-                try:
-                    switch.add_network(segmentation_id, network_id)
-                except Exception as e:
-                    LOG.error("Failed to create network %(net_id)s "
-                              "on device: %(switch)s, reason: %(exc)s",
-                              {'net_id': network_id,
-                               'switch': switch_name,
-                               'exc': e})
-                    raise
-                else:
-                    LOG.info('Network %(net_id)s has been added on device '
-                             '%(device)s', {'net_id': network['id'],
-                                            'device': switch_name})
+            devices = self._get_devices_by_physnet(physnet)
+            self._execute_in_parallel(_add_network, devices)
 
     def update_network_precommit(self, context):
         """Update resources of a network.
@@ -164,26 +172,25 @@ class GenericSwitchDriver(api.MechanismDriver):
         segmentation_id = network['provider:segmentation_id']
         physnet = network['provider:physical_network']
 
+        def _del_network(switch_name, switch):
+            try:
+                switch.del_network(segmentation_id, network['id'])
+            except Exception as e:
+                LOG.error("Failed to delete network %(net_id)s "
+                          "on device: %(switch)s, reason: %(exc)s",
+                          {'net_id': network['id'],
+                           'switch': switch_name,
+                           'exc': e})
+                raise
+            else:
+                LOG.info('Network %(net_id)s has been deleted on device '
+                         '%(device)s', {'net_id': network['id'],
+                                        'device': switch_name})
+
         if provider_type == 'vlan' and segmentation_id:
             # Delete vlan on all switches from this driver
-            exc_info = None
-            for switch_name, switch in self._get_devices_by_physnet(physnet):
-                try:
-                    switch.del_network(segmentation_id, network['id'])
-                except Exception as e:
-                    LOG.error("Failed to delete network %(net_id)s "
-                              "on device: %(switch)s, reason: %(exc)s",
-                              {'net_id': network['id'],
-                               'switch': switch_name,
-                               'exc': e})
-                    # Save any exceptions for later reraise.
-                    exc_info = sys.exc_info()
-                else:
-                    LOG.info('Network %(net_id)s has been deleted on device '
-                             '%(device)s', {'net_id': network['id'],
-                                            'device': switch_name})
-            if exc_info:
-                six.reraise(*exc_info)
+            devices = self._get_devices_by_physnet(physnet)
+            self._execute_in_parallel(_del_network, devices)
 
     def create_subnet_precommit(self, context):
         """Allocate resources for a new subnet.
@@ -553,3 +560,38 @@ class GenericSwitchDriver(api.MechanismDriver):
             # follow the old behaviour of mapping all networks to it.
             if not physnets or physnet in physnets:
                 yield switch_name, switch
+
+    def _execute_in_parallel(self, func, devices):
+        """Execute a function in parallel over multiple devices.
+
+        If any threads raise an exception then this method will also.
+
+        :param func: Function to call.
+        :param devices: Generator yielding 2-tuples containing the name of the
+            switch and the switch device object.
+        :raises: Exception raised by last thread in the list to raise.
+        """
+        threads = []
+        for switch_name, switch in devices:
+            thread = self.pool.spawn(func, switch_name, switch)
+            threads.append(thread)
+        self._wait_for_threads(threads)
+
+    @staticmethod
+    def _wait_for_threads(threads):
+        """Wait for all threads in a list to complete.
+
+        If any threads raise an exception then this method will also.
+
+        :param threads: List of threads to wait for.
+        :raises: Exception raised by last thread in the list to raise.
+        """
+        exc_info = None
+        for thread in threads:
+            try:
+                thread.wait()
+            except Exception as e:
+                # Save any exceptions for later reraise.
+                exc_info = sys.exc_info()
+        if exc_info:
+            six.reraise(*exc_info)
