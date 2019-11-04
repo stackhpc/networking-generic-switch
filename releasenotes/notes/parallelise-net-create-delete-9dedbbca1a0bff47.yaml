@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    Adds support for parallel creation and deletion of networks. This can be
+    useful when there are many devices configured and device configuration
+    takes a long time to complete. The number of threads available to perform
+    this work is configured via the configuration option
+    ``[ngs_threadpool]size``, and defaults to 100.
