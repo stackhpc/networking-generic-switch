@@ -22,7 +22,7 @@ env:
     # Build documentation.
     - TOX_ENV=docs
     # Run python2.7 unit tests.
-    - TOX_ENV=py27
+    - TOX_ENV=py27 UPPER_CONSTRAINTS_FILE=https://releases.openstack.org/constraints/upper/train
 
 install:
   # Install tox in a virtualenv to ensure we have an up to date version.
