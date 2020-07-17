@@ -11,31 +11,54 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+import re
 
 from networking_generic_switch.devices import netmiko_devices
 
 
 class Cumulus(netmiko_devices.NetmikoSwitch):
-    # TODO(johngarbutt): we assume allowed vlans are added to bond
-    ADD_NETWORK = ()
-    DELETE_NETWORK = ()
+    """Built for Cumulus 4.x
 
-    PLUG_PORT_TO_NETWORK = (
+    Note for this switch you want config like this:
+
+    [genericswitch:<hostname>]
+    device_type = netmiko_cumulus
+    ip = <ip>
+    username = <username>
+    password = <password>
+    secret = <password for sudo>
+    ngs_physical_networks = physnet1
+    ngs_max_connections = 1
+    ngs_port_default_vlan = 123
+    ngs_disable_inactive_ports = False
+    """
+    NETMIKO_DEVICE_TYPE = "linux"
+
+    # TODO(johngarbutt): for now, assume allowed VLANs are on trunks already
+    #  But really this should be implemented and then opt out via config.
+    ADD_NETWORK = []
+    DELETE_NETWORK = []
+
+    PLUG_PORT_TO_NETWORK = [
         'net add interface {port} bridge access {segmentation_id}',
-    )
+    ]
 
-    DELETE_PORT = (
+    DELETE_PORT = [
         'net del interface {port} bridge access {segmentation_id}',
-    )
+    ]
 
-    ENABLE_PORT = (
+    ENABLE_PORT = [
         'net del interface {port} link down',
-    )
+    ]
 
-    DISABLE_PORT = (
+    DISABLE_PORT = [
         'net add interface {port} link down',
-    )
+    ]
 
-    SAVE_CONFIGURATION = {
+    SAVE_CONFIGURATION = [
         'net commit'
-    }
+    ]
+
+    ERROR_MSG_PATTERNS = [
+        re.compile(r'configuration does not have "bridge-access'),
+    ]

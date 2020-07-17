@@ -32,9 +32,6 @@ from networking_generic_switch import locking as ngs_lock
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
-TYPE_ALIAS = {
-    "cumulus": "ovs_linux",
-}
 
 def check_output(operation):
     """Returns a decorator that checks the output of an operation.
@@ -63,6 +60,7 @@ def check_output(operation):
 
 
 class NetmikoSwitch(devices.GenericSwitchDevice):
+    NETMIKO_DEVICE_TYPE = None
 
     ADD_NETWORK = None
 
@@ -94,8 +92,8 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         device_type = self.config.get('device_type', '')
         # use part that is after 'netmiko_'
         device_type = device_type.partition('netmiko_')[2]
-        # some device types are an alias for netmiko type
-        device_type = TYPE_ALIAS.get(device_type, device_type)
+        if self.NETMIKO_DEVICE_TYPE:
+            device_type = self.NETMIKO_DEVICE_TYPE
         if device_type not in netmiko.platforms:
             raise exc.GenericSwitchNetmikoNotSupported(
                 device_type=device_type)
