@@ -16,22 +16,26 @@ from networking_generic_switch.devices import netmiko_devices
 
 
 class Cumulus(netmiko_devices.NetmikoSwitch):
-    ADD_NETWORK = (
-    )
-
-    DELETE_NETWORK = (
-    )
+    # TODO(johngarbutt): we assume allowed vlans are added to bond
+    ADD_NETWORK = ()
+    DELETE_NETWORK = ()
 
     PLUG_PORT_TO_NETWORK = (
-        'net del interface {port}',
-        'net commit',
         'net add interface {port} bridge access {segmentation_id}',
-        'net del interface {port} link down',
-        'net commit',
     )
 
     DELETE_PORT = (
-        'net del interface {port}',
-        'net interface {port} link down',
-        'net commit'
+        'net del interface {port} bridge access {segmentation_id}',
     )
+
+    ENABLE_PORT = (
+        'net del interface {port} link down',
+    )
+
+    DISABLE_PORT = (
+        'net add interface {port} link down',
+    )
+
+    SAVE_CONFIGURATION = {
+        'net commit'
+    }
