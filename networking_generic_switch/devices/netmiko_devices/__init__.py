@@ -17,7 +17,6 @@ import contextlib
 import uuid
 
 import netmiko
-from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log as logging
 import paramiko
@@ -152,10 +151,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 int(self.ngs_config['ngs_ssh_connect_interval'])),
         )
         def _create_connection():
-            conn = netmiko.ConnectHandler(**self.config)
-            # test we have a good connection here
-            net_connect.find_prompt()
-            return conn
+            return netmiko.ConnectHandler(**self.config)
 
         # First, create a connection.
         try:
