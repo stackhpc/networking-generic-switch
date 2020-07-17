@@ -44,8 +44,7 @@ class TestNetmikoCumulus(test_netmiko_base.NetmikoSwitchTestBase):
                 'NetmikoSwitch.send_commands_to_device')
     def test_plug_port_to_network_fails(self, mock_exec):
         mock_exec.return_value = (
-            'swp11s1\'s configuration does not have '
-            '"bridge-access 310".\n\n'
+            'ERROR: Command not found.\n\nasdf'
         )
         self.assertRaises(exc.GenericSwitchNetmikoConfigError,
                           self.switch.plug_port_to_network, 3333, 33)

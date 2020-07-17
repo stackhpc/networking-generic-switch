@@ -60,5 +60,9 @@ class Cumulus(netmiko_devices.NetmikoSwitch):
     ]
 
     ERROR_MSG_PATTERNS = [
-        re.compile(r'configuration does not have "bridge-access'),
+        # Its tempting to add this error message, but as only one
+        # bridge-access is allowed, we ignore that error for now:
+        # re.compile(r'configuration does not have "bridge-access')
+        re.compile(r'ERROR: Command not found.'),
+        re.compile(r'command not found'),
     ]
