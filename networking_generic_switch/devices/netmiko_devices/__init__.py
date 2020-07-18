@@ -98,6 +98,9 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             raise exc.GenericSwitchNetmikoNotSupported(
                 device_type=device_type)
         self.config['device_type'] = device_type
+        if 'global_delay_factor' in self.config:
+            self.config['global_delay_factor'] = int(
+                self.config['global_delay_factor'])
 
         self.locker = None
         if CONF.ngs_coordination.backend_url:
