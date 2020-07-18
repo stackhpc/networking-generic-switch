@@ -175,12 +175,10 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             return
 
         try:
-            with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
-                with self._get_connection() as net_connect:
-                    output = self.send_config_set(net_connect, cmd_set)
-                    # NOTE (vsaienko) always save configuration
-                    # when configuration is applied successfully.
-                    self.save_configuration(net_connect)
+            if self.locker:
+                output = self._send_commands_when_locker(cmd_set)
+            else:
+                output = self._send_commands_serially(cmd_set)
         except exc.GenericSwitchException:
             # Reraise without modification exceptions originating from this
             # module.
@@ -191,6 +189,24 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
         LOG.debug(output)
         return output
+
+    def _do_send_and_save(self, cmd_set):
+        with self._get_connection() as net_connect:
+            output = self.send_config_set(net_connect, cmd_set)
+            # NOTE (vsaienko) always save configuration
+            # when configuration is applied successfully.
+            self.save_configuration(net_connect)
+        return output
+
+    def _send_commands_when_locker(self, cmd_set):
+        with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
+            self._do_send_and_save(cmd_set)
+
+    def _send_commands_serially(self, cmd_set):
+        @ngs_lock.synchronized(self.lock_kwargs['locks_prefix'], fair=True)
+        def _with_lock():
+            return self._do_send_and_save(cmd_set)
+        return _with_lock()
 
     @check_output('add network')
     def add_network(self, segmentation_id, network_id):

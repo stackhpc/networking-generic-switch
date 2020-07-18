@@ -14,11 +14,17 @@
 
 import itertools
 
+from oslo_concurrency import lockutils
 from oslo_log import log as logging
 import tenacity
 from tooz import coordination
 
 LOG = logging.getLogger(__name__)
+
+_prefix = 'ngs'
+synchronized = lockutils.synchronized_with_prefix(_prefix)
+# TODO(johngarbutt): unclear when to call this one!
+lock_cleanup = lockutils.remove_external_lock_file_with_prefix(_prefix)
 
 
 class PoolLock(object):
