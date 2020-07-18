@@ -203,7 +203,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     def _send_commands_when_locker(self, cmd_set):
         with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
-            self._do_send_and_save(cmd_set)
+            return self._do_send_and_save(cmd_set)
 
     def _send_commands_serially(self, cmd_set):
         @ngs_lock.synchronized(self.lock_kwargs['locks_prefix'], fair=True)
