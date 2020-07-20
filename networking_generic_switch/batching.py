@@ -34,7 +34,7 @@ class BatchList(object):
         if self.client is None:
             # TODO(johngarbutt) url that supports cert config is better
             self.client = etcd3.client(
-                host="localhost", port=2379)
+                host="10.225.1.1", port=2379)
         atexit.register(self.client.close)
 
     def add_batch(self, cmds):
