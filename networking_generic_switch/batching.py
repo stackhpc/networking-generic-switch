@@ -40,8 +40,8 @@ class BatchList(object):
     def add_batch(self, cmds):
         """Clients add batch, given key to wait on for completion"""
         uuid = uuidutils.generate_uuid()
-        result_key = self.RESULT_ITEM_KEY.format(self.switch_name, uuid)
-        input_key = self.INPUT_ITEM_KEY.format(self.switch_name, uuid)
+        result_key = self.RESULT_ITEM_KEY % (self.switch_name, uuid)
+        input_key = self.INPUT_ITEM_KEY % (self.switch_name, uuid)
         event = {
             "uuid": uuid,
             "result_key": result_key,
@@ -50,7 +50,7 @@ class BatchList(object):
         value = json.dumps(event).encode("utf-8")
         success = self.client.put_if_not_exists(input_key, value)
         if not success:
-            raise Exception("failed to add batch")
+            raise Exception("failed to add batch to key: %s", input_key)
         _, metadata = self.client.get(input_key)
         if metadata is None:
             raise Exception("failed find value we just added")
@@ -65,7 +65,7 @@ class BatchList(object):
         Typically called by every caller of add_batch.
         Often a noop if all batches are already executed.
         """
-        input_prefix = self.INPUT_PREFIX.format(self.switch_name)
+        input_prefix = self.INPUT_PREFIX % self.switch_name
         batches = self.client.get_prefix(input_prefix)
         if not batches:
             LOG.debug("Skipped execution for %s", self.switch_name)
@@ -74,7 +74,7 @@ class BatchList(object):
         LOG.debug("Starting to execute %d batches", len(batches))
         lock_ttl_seconds = 60
         lock_acquire_timeout = 300
-        lock = self.client.lock(self.EXEC_LOCK.format(self.switch_name),
+        lock = self.client.lock(self.EXEC_LOCK % self.switch_name,
                                 lock_ttl_seconds)
 
         lock.acquire(lock_acquire_timeout)
