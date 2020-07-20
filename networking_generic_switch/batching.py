@@ -54,6 +54,7 @@ class BatchList(object):
         _, metadata = self.client.get(input_key)
         if metadata is None:
             raise Exception("failed find value we just added")
+        LOG.debug("written to key %s", input_key)
         return {
             "version": metadata.create_revision,
             "result_key": result_key

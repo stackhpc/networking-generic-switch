@@ -203,14 +203,22 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
     def _batch_up_commands(self, cmd_set):
         # request that the cmd_set by executed
         result_info = self.batch_list.add_batch(cmd_set)
-        # kick off a run that will block till ready
-        # but hopefully is a no op because evenything has already run
-        eventlet.spawn_n(
-            self.batch_list.execute_pending_batches,
-            self._get_connection,
-            self.send_config_set,
-            self.save_configuration,
-        )
+
+        def do_work():
+            LOG.debug("starting to do work")
+            try:
+                self.batch_list.execute_pending_batches(
+                    self._get_connection,
+                    self.send_config_set,
+                    self.save_configuration)
+            except:
+                LOG.error("failed to run execute batch")
+
+        # Run all pending tasks, which might be a no op
+        # if pending tasks already ran
+        eventlet.spawn_n(do_work)
+        eventlet.sleep(0)
+
         # we might get ouput before the task above runs
         output = self.batch_list.get_result(**result_info)
         LOG.debug("Got batch result: %s", output)
