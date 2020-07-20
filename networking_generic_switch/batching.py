@@ -74,11 +74,12 @@ class BatchList(object):
         LOG.debug("Starting to execute %d batches", len(batches))
         lock_ttl_seconds = 60
         lock_acquire_timeout = 300
-        lock = self.client.lock(self.EXEC_LOCK % self.switch_name,
-                                lock_ttl_seconds)
+        lock_name = self.EXEC_LOCK % self.switch_name
+        lock = self.client.lock(lock_name, lock_ttl_seconds)
 
         lock.acquire(lock_acquire_timeout)
         try:
+            LOG.debug("got lock %s", lock_name)
             with get_connection() as connection:
                 connection.enable()
                 lock.refresh()
@@ -88,6 +89,7 @@ class BatchList(object):
                 results = {}
                 for value, metadata in batches:
                     batch = json.loads(value.decode('utf-8'))
+                    LOG.debug("executing: %s", batch.cmds)
                     result = do_batch(connection, batch.cmds)
                     results[metadata.key] = result
                     completed_keys.append(metadata)
@@ -114,11 +116,15 @@ class BatchList(object):
                     if not delete_success:
                         LOG.error("unable to delete input key: %s",
                                   key_metadata.key)
+        except:
+            LOG.error("failed to do batch")
+            raise
         finally:
             lock.release()
 
     def get_result(self, result_key, version):
         """Blocks until result is received"""
+        LOG.debug("starting to watch key: %s", result_key)
         events, cancel = self.client.watch(result_key,
                                            start_revision=(version + 1))
         for event in events:
@@ -127,6 +133,8 @@ class BatchList(object):
 
         # TODO(johngarbutt) need to look in the event!
         raw, metadata = self.client.get(result_key)
+        if metadata is None:
+            LOG.error("Failed to fetch result for %s", result_key)
         batch_result = json.loads(raw.encode('utf-8'))
         is_deleted = self.client.delete(result_key)
         if not is_deleted:
