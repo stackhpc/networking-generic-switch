@@ -42,6 +42,7 @@ class BatchList(object):
         uuid = uuidutils.generate_uuid()
         result_key = self.RESULT_ITEM_KEY % (self.switch_name, uuid)
         input_key = self.INPUT_ITEM_KEY % (self.switch_name, uuid)
+        # TODO(johngarbutt) add a date it was added, so it can timeout?
         event = {
             "uuid": uuid,
             "result_key": result_key,
@@ -67,7 +68,7 @@ class BatchList(object):
         Often a noop if all batches are already executed.
         """
         input_prefix = self.INPUT_PREFIX % self.switch_name
-        batches = self.client.get_prefix(input_prefix)
+        batches = list(self.client.get_prefix(input_prefix))
         if not batches:
             LOG.debug("Skipped execution for %s", self.switch_name)
             return
