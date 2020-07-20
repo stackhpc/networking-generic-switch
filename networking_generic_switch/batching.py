@@ -128,6 +128,8 @@ class BatchList(object):
         LOG.debug("starting to watch key: %s", result_key)
         events, cancel = self.client.watch(result_key,
                                            start_revision=(version + 1))
+
+        # TODO(johngarbutt) timeout?
         for event in events:
             cancel()
             LOG.debug("Got: event %s", event)

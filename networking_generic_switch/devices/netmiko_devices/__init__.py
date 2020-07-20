@@ -211,17 +211,20 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                     self._get_connection,
                     self.send_config_set,
                     self.save_configuration)
-            except:
-                LOG.error("failed to run execute batch")
+            except Exception as e:
+                LOG.error("failed to run execute batch: %s", e)
 
         # Run all pending tasks, which might be a no op
         # if pending tasks already ran
-        eventlet.spawn_n(do_work)
+        thread = eventlet.spawn(do_work)
         eventlet.sleep(0)
 
         # we might get ouput before the task above runs
         output = self.batch_list.get_result(**result_info)
         LOG.debug("Got batch result: %s", output)
+
+        # Wait so we get exceptions back?
+        thread.wait()
         return output
 
     def _do_send_and_save(self, cmd_set):
