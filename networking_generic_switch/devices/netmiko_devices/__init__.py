@@ -16,6 +16,7 @@ import atexit
 import contextlib
 import uuid
 
+import eventlet
 import netmiko
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -24,6 +25,7 @@ import six
 import tenacity
 from tooz import coordination
 
+from networking_generic_switch import batching
 from networking_generic_switch import devices
 from networking_generic_switch.devices import utils as device_utils
 from networking_generic_switch import exceptions as exc
@@ -116,6 +118,9 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 'host', '') or self.config.get('ip', ''),
             'timeout': CONF.ngs_coordination.acquire_timeout}
 
+        # TODO(johngarbutt) config!
+        self.batch_list = batching.BatchList(self.lock_kwargs['locks_prefix'])
+
     def _format_commands(self, commands, **kwargs):
         if not commands:
             return []
@@ -178,6 +183,8 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             return
 
         try:
+            if self.batch_list:
+                return self._batch_up_commands(cmd_set)
             if self.locker:
                 output = self._send_commands_when_locker(cmd_set)
             else:
@@ -193,8 +200,25 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         LOG.debug(output)
         return output
 
+    def _batch_up_commands(self, cmd_set):
+        # request that the cmd_set by executed
+        result_info = self.batch_list.add_batch(cmd_set)
+        # kick off a run that will block till ready
+        # but hopefully is a no op because evenything has already run
+        eventlet.spawn_n(
+            self.batch_list.execute_pending_batches,
+            self._get_connection,
+            self.send_config_set,
+            self.save_configuration,
+        )
+        # we might get ouput before the task above runs
+        output = self.batch_list.get_result(**result_info)
+        LOG.debug("Got batch result: %s", output)
+        return output
+
     def _do_send_and_save(self, cmd_set):
         with self._get_connection() as net_connect:
+            net_connect.enable()
             output = self.send_config_set(net_connect, cmd_set)
             # NOTE (vsaienko) always save configuration
             # when configuration is applied successfully.
@@ -296,7 +320,6 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         :param cmd_set: a list of configuration lines to send.
         :returns: The output of the configuration commands.
         """
-        net_connect.enable()
         return net_connect.send_config_set(config_commands=cmd_set)
 
     def save_configuration(self, net_connect):
