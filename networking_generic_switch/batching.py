@@ -85,7 +85,7 @@ class BatchList(object):
             # Log a message after each failed attempt.
             after=tenacity.after_log(LOG, logging.DEBUG),
             # Retry if we haven't got the lock yet
-            retry=tenacity.retry_if_not_result(lock.is_acquired),
+            retry=tenacity.retry_if_result(lambda x: x is False),
             # Stop after the configured timeout.
             stop=tenacity.stop_after_delay(300),
             # Wait for the configured interval between attempts.
