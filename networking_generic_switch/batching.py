@@ -100,6 +100,9 @@ class BatchList(object):
             if not work:
                 return True
 
+            # Trigger a retry
+            return False
+
         _acquire_lock_with_retry()
 
         # be sure to drop the lock when we are done
