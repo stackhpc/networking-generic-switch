@@ -40,6 +40,7 @@ class BatchList(object):
 
     def add_batch(self, cmds):
         """Clients add batch, given key to wait on for completion"""
+        # TODO(johngarbutt) update this so we preserve insertion order
         uuid = uuidutils.generate_uuid()
         result_key = self.RESULT_ITEM_KEY % (self.switch_name, uuid)
         input_key = self.INPUT_ITEM_KEY % (self.switch_name, uuid)
