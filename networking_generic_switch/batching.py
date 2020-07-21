@@ -79,8 +79,7 @@ class BatchList(object):
         lock_ttl_seconds = 30
         lock_name = self.EXEC_LOCK % self.switch_name
         lock = self.client.lock(lock_name, lock_ttl_seconds)
-
-        with lock.acquire() as lock:
+        with lock:
             LOG.debug("got lock %s", lock_name)
 
             # Fetch fresh list now we have the lock

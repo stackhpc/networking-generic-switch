@@ -212,7 +212,8 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                     self.send_config_set,
                     self.save_configuration)
             except Exception as e:
-                LOG.error("failed to run execute batch: %s", e)
+                LOG.error("failed to run execute batch: %s", e,
+                          exec_info=True)
                 raise
 
         # Run all pending tasks, which might be a no op
