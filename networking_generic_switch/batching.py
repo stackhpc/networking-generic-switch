@@ -24,7 +24,7 @@ LOG = logging.getLogger(__name__)
 
 
 class BatchList(object):
-    EXEC_LOCK = "/ngs/batch/%s/run_lock"
+    EXEC_LOCK = "/ngs/batch/%s/execute_lock"
     INPUT_PREFIX = "/ngs/batch/%s/input/"
     INPUT_ITEM_KEY = "/ngs/batch/%s/input/%s"
     RESULT_ITEM_KEY = "/ngs/batch/%s/output/%s"
@@ -75,7 +75,7 @@ class BatchList(object):
             return
 
         LOG.debug("Getting lock to execute %d batches", len(batches))
-        lock_ttl_seconds = 60
+        lock_ttl_seconds = 30
         lock_acquire_timeout = 60
         lock_name = self.EXEC_LOCK % self.switch_name
         lock = self.client.lock(lock_name, lock_ttl_seconds)
