@@ -137,9 +137,12 @@ class BatchList(object):
                         LOG.error("unable to delete input key: %s",
                                   input_key)
         finally:
-            LOG.debug("trying to release the lock")
-            lock.release()
-            LOG.debug("lock released")
+            LOG.debug("trying to release the lock: %s", lock_name)
+            released = lock.release()
+            if released:
+                LOG.debug("lock released: %s", lock_name)
+            else:
+                raise Exception("unable to release lock")
 
     def get_result(self, result_key, version):
         LOG.debug("fetching key %s", result_key)
@@ -149,6 +152,7 @@ class BatchList(object):
             LOG.error("Failed to fetch result for %s", result_key)
             raise Exception("can't find result: %s", result_key)
         batch_result = json.loads(raw.encode('utf-8'))
+        LOG.debug("deleting key, now we have result: %s", result_key)
         is_deleted = self.client.delete(result_key)
         if not is_deleted:
             LOG.error("Unable to delete key %s", result_key)
