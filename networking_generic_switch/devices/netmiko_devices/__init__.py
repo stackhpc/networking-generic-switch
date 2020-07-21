@@ -16,7 +16,6 @@ import atexit
 import contextlib
 import uuid
 
-import eventlet
 import netmiko
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -213,18 +212,17 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                     self.save_configuration)
             except Exception as e:
                 LOG.error("failed to run execute batch: %s", e)
+                raise
 
         # Run all pending tasks, which might be a no op
         # if pending tasks already ran
-        thread = eventlet.spawn(do_work)
-        eventlet.sleep(0)
+        # thread = eventlet.spawn(do_work)
+        # eventlet.sleep(0)
+        do_work()
 
         # we might get ouput before the task above runs
         output = self.batch_list.get_result(**result_info)
         LOG.debug("Got batch result: %s", output)
-
-        # Wait so we get exceptions back?
-        thread.wait()
         return output
 
     def _do_send_and_save(self, cmd_set):

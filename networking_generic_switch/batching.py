@@ -16,6 +16,7 @@ import atexit
 import json
 
 import etcd3
+import eventlet
 from oslo_log import log as logging
 from oslo_utils import uuidutils
 
@@ -118,29 +119,32 @@ class BatchList(object):
                     if not delete_success:
                         LOG.error("unable to delete input key: %s",
                                   key_metadata.key)
-        except:
-            LOG.error("failed to do batch")
-            raise
         finally:
             lock.release()
 
     def get_result(self, result_key, version):
-        """Blocks until result is received"""
-        LOG.debug("starting to watch key: %s", result_key)
-        events, cancel = self.client.watch(result_key,
-                                           start_revision=(version + 1))
-
-        # TODO(johngarbutt) timeout?
-        for event in events:
-            cancel()
-            LOG.debug("Got: event %s", event)
-
+        LOG.debug("fetching key %s", result_key)
         # TODO(johngarbutt) need to look in the event!
         raw, metadata = self.client.get(result_key)
         if metadata is None:
             LOG.error("Failed to fetch result for %s", result_key)
+            raise Exception("can't find result: %s", result_key)
         batch_result = json.loads(raw.encode('utf-8'))
         is_deleted = self.client.delete(result_key)
         if not is_deleted:
             LOG.error("Unable to delete key %s", result_key)
         return batch_result
+
+    def wait_for_result(self, result_key, version):
+        """Blocks until result is received"""
+        LOG.debug("starting to watch key: %s", result_key)
+        events, cancel = self.client.watch(result_key,
+                                           start_revision=(version + 1))
+        eventlet.sleep(0)
+
+        # TODO(johngarbutt) timeout?
+        for event in events:
+            LOG.debug("Got: event %s", event)
+            cancel()
+
+        return self.get_result(result_key, version)
