@@ -19,6 +19,7 @@ import etcd3gw
 import eventlet
 from oslo_log import log as logging
 from oslo_utils import uuidutils
+import tenacity
 
 LOG = logging.getLogger(__name__)
 
@@ -79,6 +80,23 @@ class BatchList(object):
         lock_ttl_seconds = 30
         lock_name = self.EXEC_LOCK % self.switch_name
         lock = self.client.lock(lock_name, lock_ttl_seconds)
+
+        @tenacity.retry(
+            # Log a message after each failed attempt.
+            after=tenacity.after_log(LOG, logging.DEBUG),
+            # Retry if we haven't got the lock yet
+            retry=tenacity.retry_if_not_result(lock.is_acquired),
+            # Stop after the configured timeout.
+            stop=tenacity.stop_after_delay(300),
+            # Wait for the configured interval between attempts.
+            wait=tenacity.wait_fixed(2),
+        )
+        def _acquire_lock():
+            return lock.acquire()
+
+        if not lock.is_acquired():
+            raise Exception("unable to get lock: %s", lock_name)
+
         with lock:
             LOG.debug("got lock %s", lock_name)
 
