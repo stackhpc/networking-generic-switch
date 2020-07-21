@@ -96,15 +96,17 @@ class BatchList(object):
                 # lock.refresh()
 
                 # Try to apply all the batches
-                completed_keys = []
                 results = {}
                 for value, metadata in batches:
                     batch = json.loads(value.decode('utf-8'))
-                    LOG.debug("executing: %s", batch.cmds)
-                    result = do_batch(connection, batch.cmds)
-                    results[metadata.key] = result
-                    completed_keys.append(metadata)
-                    LOG.debug("got result for: %s", metadata.key)
+                    LOG.debug("executing: %s", batch)
+                    result = do_batch(connection, batch['cmds'])
+                    results[metadata.key] = {
+                        'result': result,
+                        'input_key': metadata.key,
+                        'result_key': batch['result_key'],
+                    }
+                    LOG.debug("got result: %s", results[metadata.key])
                     # lock.refresh()
                     # LOG.debug("refreshed lock")
 
@@ -121,18 +123,19 @@ class BatchList(object):
                 # Now we have saved the config,
                 # tell the waiting threads we are done
                 LOG.debug("write results to etcd")
-                for key_metadata in completed_keys:
+                for input_key, result_dict in results.items():
                     # TODO(johngarbutt) more careful about key versions
-                    success = self.client.put_if_not_exists(batch.result_key,
-                                                            json.dumps(result))
+                    success = self.client.put_if_not_exists(
+                        result_dict['result_key'],
+                        json.dumps(result_dict['result']))
                     if not success:
                         # TODO(johngarbutt) what can we do here?
                         LOG.error("failed to report batch result for: %s",
                                   batch)
-                    delete_success = self.client.delete(key_metadata.key)
+                    delete_success = self.client.delete(input_key)
                     if not delete_success:
                         LOG.error("unable to delete input key: %s",
-                                  key_metadata.key)
+                                  input_key)
         finally:
             LOG.debug("trying to release the lock")
             lock.release()
