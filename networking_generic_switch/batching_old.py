@@ -15,7 +15,7 @@
 import atexit
 import json
 
-import etcd3gw
+import etcd3
 import eventlet
 from oslo_log import log as logging
 from oslo_utils import uuidutils
@@ -34,8 +34,8 @@ class BatchList(object):
         self.client = etcd_client
         if self.client is None:
             # TODO(johngarbutt) url that supports cert config is better
-            self.client = etcd3gw.client(
-                host="10.225.1.1", port=2381)
+            self.client = etcd3.client(
+                host="10.225.1.1", port=2379)
         atexit.register(self.client.close)
 
     def add_batch(self, cmds):
@@ -50,15 +50,15 @@ class BatchList(object):
             "cmds": cmds,
         }
         value = json.dumps(event).encode("utf-8")
-        success = self.client.create(input_key, value)
+        success = self.client.put_if_not_exists(input_key, value)
         if not success:
             raise Exception("failed to add batch to key: %s", input_key)
-        keys = self.client.get(input_key)
-        if len(keys) != 1:
+        _, metadata = self.client.get(input_key)
+        if metadata is None:
             raise Exception("failed find value we just added")
         LOG.debug("written to key %s", input_key)
         return {
-            "version": keys[0][1]["create_revision"],
+            "version": metadata.create_revision,
             "result_key": result_key
         }
 
@@ -69,21 +69,23 @@ class BatchList(object):
         Often a noop if all batches are already executed.
         """
         input_prefix = self.INPUT_PREFIX % self.switch_name
-        batches = self.client.get_prefix(input_prefix)
+        batches = list(self.client.get_prefix(input_prefix))
         if not batches:
             LOG.debug("Skipped execution for %s", self.switch_name)
             return
 
         LOG.debug("Getting lock to execute %d batches", len(batches))
         lock_ttl_seconds = 30
+        lock_acquire_timeout = 60
         lock_name = self.EXEC_LOCK % self.switch_name
         lock = self.client.lock(lock_name, lock_ttl_seconds)
 
-        with lock.acquire() as lock:
+        lock.acquire(lock_acquire_timeout)
+        try:
             LOG.debug("got lock %s", lock_name)
 
             # Fetch fresh list now we have the lock
-            batches = self.client.get_prefix(input_prefix)
+            batches = list(self.client.get_prefix(input_prefix))
             if not batches:
                 LOG.debug("No batches to execute %s", self.switch_name)
                 return
@@ -91,23 +93,22 @@ class BatchList(object):
 
             with get_connection() as connection:
                 connection.enable()
-                lock.refresh()
+                # lock.refresh()
 
                 # Try to apply all the batches
                 results = {}
                 for value, metadata in batches:
                     batch = json.loads(value.decode('utf-8'))
-                    input_key = metadata["key"]
-
-                    LOG.debug("executing: %s %s", batch, metadata)
+                    LOG.debug("executing: %s", batch)
                     result = do_batch(connection, batch['cmds'])
-                    results[input_key] = {
+                    results[metadata.key] = {
                         'result': result,
-                        'input_key': input_key,
+                        'input_key': metadata.key,
                         'result_key': batch['result_key'],
                     }
-                    LOG.debug("got result: %s", results[input_key])
-                    lock.refresh()
+                    LOG.debug("got result: %s", results[metadata.key])
+                    # lock.refresh()
+                    # LOG.debug("refreshed lock")
 
                 # Save the changes we made
                 # TODO(johngarbutt) maybe undo failed config first? its tricky
@@ -116,17 +117,17 @@ class BatchList(object):
                 LOG.debug("Saved config")
 
                 # Config can take a while
-                lock.refresh()
-                LOG.debug("lock refreshed")
+                # lock.refresh()
+                # LOG.debug("lock refreshed")
 
                 # Now we have saved the config,
                 # tell the waiting threads we are done
                 LOG.debug("write results to etcd")
                 for input_key, result_dict in results.items():
                     # TODO(johngarbutt) more careful about key versions
-                    success = self.client.create(
+                    success = self.client.put_if_not_exists(
                         result_dict['result_key'],
-                        json.dumps(result_dict['result']).encode('utf-8'))
+                        json.dumps(result_dict['result']))
                     if not success:
                         # TODO(johngarbutt) what can we do here?
                         LOG.error("failed to report batch result for: %s",
@@ -135,8 +136,13 @@ class BatchList(object):
                     if not delete_success:
                         LOG.error("unable to delete input key: %s",
                                   input_key)
-
-        LOG.debug("end of lock %s", lock_name)
+        finally:
+            LOG.debug("trying to release the lock: %s", lock_name)
+            released = lock.release()
+            if released:
+                LOG.debug("lock released: %s", lock_name)
+            else:
+                raise Exception("unable to release lock")
 
     def get_result(self, result_key, version):
         LOG.debug("fetching key %s", result_key)
