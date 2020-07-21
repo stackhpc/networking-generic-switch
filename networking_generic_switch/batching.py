@@ -91,8 +91,10 @@ class BatchList(object):
             # Wait for the configured interval between attempts.
             wait=tenacity.wait_fixed(2),
         )
-        def _acquire_lock():
+        def _acquire_lock_with_retry():
             return lock.acquire()
+
+        _acquire_lock_with_retry()
 
         if not lock.is_acquired():
             raise Exception("unable to get lock: %s", lock_name)
