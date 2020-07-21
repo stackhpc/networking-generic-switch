@@ -89,16 +89,21 @@ class BatchList(object):
             # Stop after the configured timeout.
             stop=tenacity.stop_after_delay(300),
             # Wait for the configured interval between attempts.
-            wait=tenacity.wait_fixed(2),
+            wait=tenacity.wait_fixed(1),
         )
         def _acquire_lock_with_retry():
-            return lock.acquire()
+            lock_acquired = lock.acquire()
+            if lock_acquired:
+                return True
+
+            work = self.client.get_prefix(input_prefix)
+            if not work:
+                return True
 
         _acquire_lock_with_retry()
 
-        if not lock.is_acquired():
-            raise Exception("unable to get lock: %s", lock_name)
-
+        # be sure to drop the lock when we are done
+        results = {}
         with lock:
             LOG.debug("got lock %s", lock_name)
 
@@ -109,6 +114,11 @@ class BatchList(object):
             if not batches:
                 LOG.debug("No batches to execute %s", self.switch_name)
                 return
+
+            # TODO(johngarbutt) Double check we have got the lock?
+            if not lock.is_acquired():
+                raise Exception("unable to get lock: %s", lock_name)
+
             LOG.debug("Starting to execute %d batches", len(batches))
 
             with get_connection() as connection:
@@ -116,7 +126,7 @@ class BatchList(object):
                 lock.refresh()
 
                 # Try to apply all the batches
-                results = {}
+                # and save all the results
                 for value, metadata in batches:
                     batch = json.loads(value.decode('utf-8'))
                     input_key = metadata["key"]
@@ -132,31 +142,31 @@ class BatchList(object):
                     lock.refresh()
 
                 # Save the changes we made
-                # TODO(johngarbutt) maybe undo failed config first? its tricky
-                LOG.debug("Trying to save config")
+                # TODO(johngarbutt) maybe undo failed configs first?
                 save_config(connection)
                 LOG.debug("Saved config")
 
-                # Config can take a while
-                lock.refresh()
-                LOG.debug("lock refreshed")
+            # Config can take a while
+            lock.refresh()
+            LOG.debug("lock refreshed")
 
-                # Now we have saved the config,
-                # tell the waiting threads we are done
-                LOG.debug("write results to etcd")
-                for input_key, result_dict in results.items():
-                    # TODO(johngarbutt) more careful about key versions
-                    success = self.client.create(
-                        result_dict['result_key'],
-                        json.dumps(result_dict['result']).encode('utf-8'))
-                    if not success:
-                        # TODO(johngarbutt) what can we do here?
-                        LOG.error("failed to report batch result for: %s",
-                                  batch)
-                    delete_success = self.client.delete(input_key)
-                    if not delete_success:
-                        LOG.error("unable to delete input key: %s",
-                                  input_key)
+            # Now we have saved the config,
+            # tell the waiting threads we are done
+            LOG.debug("write results to etcd")
+            for input_key, result_dict in results.items():
+                success = self.client.create(
+                    result_dict['result_key'],
+                    json.dumps(result_dict['result']).encode('utf-8'))
+                if not success:
+                    LOG.error("failed to report batch result for: %s",
+                              batch)
+                    continue
+                # Stop the next lock holder thinking they need
+                # to do this again
+                delete_success = self.client.delete(input_key)
+                if not delete_success:
+                    LOG.error("unable to delete input key: %s",
+                              input_key)
 
         LOG.debug("end of lock %s", lock_name)
 
