@@ -85,7 +85,7 @@ class BatchList(object):
             LOG.debug("got lock %s", lock_name)
             with get_connection() as connection:
                 connection.enable()
-                lock.refresh()
+                # lock.refresh()
 
                 # Try to apply all the batches
                 completed_keys = []
@@ -96,14 +96,19 @@ class BatchList(object):
                     result = do_batch(connection, batch.cmds)
                     results[metadata.key] = result
                     completed_keys.append(metadata)
-                    lock.refresh()
+                    LOG.debug("got result for: %s", metadata.key)
+                    #lock.refresh()
+                    #LOG.debug("refreshed lock")
 
                 # Save the changes we made
                 # TODO(johngarbutt) maybe undo failed config first? its tricky
+                LOG.debug("Trying to save config")
                 save_config(connection)
+                LOG.debug("Saved config")
 
                 # Config can take a while
-                lock.refresh()
+                # lock.refresh()
+                # LOG.debug("lock refreshed")
 
                 # Now we have saved the config,
                 # tell the waiting threads we are done
@@ -120,7 +125,9 @@ class BatchList(object):
                         LOG.error("unable to delete input key: %s",
                                   key_metadata.key)
         finally:
+            LOG.debug("trying to release the lock")
             lock.release()
+            LOG.debug("lock released")
 
     def get_result(self, result_key, version):
         LOG.debug("fetching key %s", result_key)
