@@ -46,6 +46,7 @@ class BatchList(object):
         # TODO(johngarbutt) add a date it was added, so it can timeout?
         event = {
             "uuid": uuid,
+            "input_key": input_key,
             "result_key": result_key,
             "cmds": cmds,
         }
@@ -53,7 +54,7 @@ class BatchList(object):
         success = self.client.create(input_key, value)
         if not success:
             raise Exception("failed to add batch to key: %s", input_key)
-        keys = self.client.get(input_key)
+        keys = self.client.get(input_key, metadata=True)
         if len(keys) != 1:
             raise Exception("failed find value we just added")
         LOG.debug("written to key %s", input_key)
@@ -83,7 +84,9 @@ class BatchList(object):
             LOG.debug("got lock %s", lock_name)
 
             # Fetch fresh list now we have the lock
-            batches = self.client.get_prefix(input_prefix)
+            batches = self.client.get_prefix(input_prefix,
+                                             sort_order="ascend",
+                                             sort_target="create")
             if not batches:
                 LOG.debug("No batches to execute %s", self.switch_name)
                 return
@@ -141,11 +144,13 @@ class BatchList(object):
     def get_result(self, result_key, version):
         LOG.debug("fetching key %s", result_key)
         # TODO(johngarbutt) need to look in the event!
-        raw, metadata = self.client.get(result_key)
-        if metadata is None:
+        results = self.client.get(result_key, metadata=True)
+        if len(results) != 1:
             LOG.error("Failed to fetch result for %s", result_key)
             raise Exception("can't find result: %s", result_key)
+        raw = results[0][0]
         batch_result = json.loads(raw.encode('utf-8'))
+
         LOG.debug("deleting key, now we have result: %s", result_key)
         is_deleted = self.client.delete(result_key)
         if not is_deleted:
