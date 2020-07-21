@@ -24,7 +24,7 @@ LOG = logging.getLogger(__name__)
 
 
 class BatchList(object):
-    EXEC_LOCK = "/ngs/batch/%s/exec_lock"
+    EXEC_LOCK = "/ngs/batch/%s/run_lock"
     INPUT_PREFIX = "/ngs/batch/%s/input/"
     INPUT_ITEM_KEY = "/ngs/batch/%s/input/%s"
     RESULT_ITEM_KEY = "/ngs/batch/%s/output/%s"
@@ -74,15 +74,23 @@ class BatchList(object):
             LOG.debug("Skipped execution for %s", self.switch_name)
             return
 
-        LOG.debug("Starting to execute %d batches", len(batches))
+        LOG.debug("Getting lock to execute %d batches", len(batches))
         lock_ttl_seconds = 60
-        lock_acquire_timeout = 300
+        lock_acquire_timeout = 60
         lock_name = self.EXEC_LOCK % self.switch_name
         lock = self.client.lock(lock_name, lock_ttl_seconds)
 
         lock.acquire(lock_acquire_timeout)
         try:
             LOG.debug("got lock %s", lock_name)
+
+            # Fetch fresh list now we have the lock
+            batches = list(self.client.get_prefix(input_prefix))
+            if not batches:
+                LOG.debug("No batches to execute %s", self.switch_name)
+                return
+            LOG.debug("Starting to execute %d batches", len(batches))
+
             with get_connection() as connection:
                 connection.enable()
                 # lock.refresh()
@@ -97,8 +105,8 @@ class BatchList(object):
                     results[metadata.key] = result
                     completed_keys.append(metadata)
                     LOG.debug("got result for: %s", metadata.key)
-                    #lock.refresh()
-                    #LOG.debug("refreshed lock")
+                    # lock.refresh()
+                    # LOG.debug("refreshed lock")
 
                 # Save the changes we made
                 # TODO(johngarbutt) maybe undo failed config first? its tricky
@@ -112,6 +120,7 @@ class BatchList(object):
 
                 # Now we have saved the config,
                 # tell the waiting threads we are done
+                LOG.debug("write results to etcd")
                 for key_metadata in completed_keys:
                     # TODO(johngarbutt) more careful about key versions
                     success = self.client.put_if_not_exists(batch.result_key,

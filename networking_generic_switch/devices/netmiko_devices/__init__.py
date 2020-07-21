@@ -16,6 +16,7 @@ import atexit
 import contextlib
 import uuid
 
+import eventlet
 import netmiko
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -217,7 +218,10 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         # Run all pending tasks, which might be a no op
         # if pending tasks already ran
         # thread = eventlet.spawn(do_work)
-        # eventlet.sleep(0)
+
+        # Let other work batch together
+        eventlet.sleep(0.1)
+        # Process all pending batches, including us, if required
         do_work()
 
         # we might get ouput before the task above runs
