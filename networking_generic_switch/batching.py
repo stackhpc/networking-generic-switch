@@ -123,6 +123,9 @@ class BatchList(object):
                 raise Exception("unable to get lock: %s", lock_name)
 
             LOG.debug("Starting to execute %d batches", len(batches))
+            # TODO(johngarbutt) seem to have two threads getting here!!
+            keys = [metadata["key"] for value, metadata in batches]
+            LOG.debug("Starting to execute keys: %s", keys)
 
             with get_connection() as connection:
                 connection.enable()
