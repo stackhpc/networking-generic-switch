@@ -134,24 +134,27 @@ class BatchList(object):
 
                 # Try to apply all the batches
                 # and save all the results
+                all_cmds = []
                 for value, metadata in batches:
                     batch = json.loads(value.decode('utf-8'))
                     input_key = metadata["key"]
-
-                    LOG.debug("executing: %s %s", batch, metadata)
-                    result = do_batch(connection, batch['cmds'])
+                    all_cmds += batch['cmds']
+                    # LOG.debug("executing: %s %s", batch, metadata)
                     results[input_key] = {
-                        'result': result,
+                        'result': "TODO",
                         'input_key': input_key,
                         'result_key': batch['result_key'],
                     }
-                    LOG.debug("got result: %s", results[input_key])
-                    lock.refresh()
+                    # LOG.debug("got result: %s", results[input_key])
+                    # lock.refresh()
+                result = do_batch(connection, all_cmds)
+                LOG.debug("got result: %s", result)
 
                 # Save the changes we made
                 # TODO(johngarbutt) maybe undo failed configs first?
+                LOG.debug("Start save config")
                 save_config(connection)
-                LOG.debug("Saved config")
+                LOG.debug("Finish save config")
 
             lock.refresh()
             LOG.debug("lock refreshed")
