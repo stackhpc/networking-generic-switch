@@ -95,14 +95,18 @@ class BatchList(object):
             if lock_acquired:
                 return True
 
+            # Stop waiting for the lock if there is nothing to do
             work = self.client.get_prefix(input_prefix)
             if not work:
-                return True
+                return None
 
             # Trigger a retry
             return False
 
-        _acquire_lock_with_retry()
+        # Be sure we got the lock
+        got_lock = _acquire_lock_with_retry()
+        if not got_lock or not lock.is_acquired():
+            raise Exception("unable to get lock: %s", lock_name)
 
         # be sure to drop the lock when we are done
         results = {}
@@ -110,6 +114,7 @@ class BatchList(object):
             LOG.debug("got lock %s", lock_name)
 
             # Fetch fresh list now we have the lock
+            # and order the list so we execute in order added
             batches = self.client.get_prefix(input_prefix,
                                              sort_order="ascend",
                                              sort_target="create")
@@ -117,14 +122,11 @@ class BatchList(object):
                 LOG.debug("No batches to execute %s", self.switch_name)
                 return
 
-            # TODO(johngarbutt) Double check we have got the lock?
-            if not lock.is_acquired():
-                raise Exception("unable to get lock: %s", lock_name)
-
             LOG.debug("Starting to execute %d batches", len(batches))
             # TODO(johngarbutt) seem to have two threads getting here!!
             keys = [metadata["key"] for value, metadata in batches]
             LOG.debug("Starting to execute keys: %s", keys)
+            lock.refresh()
 
             with get_connection() as connection:
                 connection.enable()
@@ -151,7 +153,6 @@ class BatchList(object):
                 save_config(connection)
                 LOG.debug("Saved config")
 
-            # Config can take a while
             lock.refresh()
             LOG.debug("lock refreshed")
 
@@ -163,15 +164,20 @@ class BatchList(object):
                     result_dict['result_key'],
                     json.dumps(result_dict['result']).encode('utf-8'))
                 if not success:
+                    # TODO: should we fail to delete the key at this point?
                     LOG.error("failed to report batch result for: %s",
                               batch)
-                    continue
+                else:
+                    LOG.debug("reported result: %s", input_key)
                 # Stop the next lock holder thinking they need
                 # to do this again
                 delete_success = self.client.delete(input_key)
                 if not delete_success:
                     LOG.error("unable to delete input key: %s",
                               input_key)
+                else:
+                    LOG.debug("deleted input key: %s", input_key)
+                lock.refresh()
 
             LOG.debug("Finished executing keys: %s", keys)
 
@@ -195,6 +201,7 @@ class BatchList(object):
 
     def wait_for_result(self, result_key, result_events, watch_cancel):
         """Blocks until result is received"""
+        # TODO(johngarbutt) need to timeout this?
         for event in result_events:
             LOG.debug("Got event: %s", event)
             # TODO(johngarbutt): check this is the event we wanted!
