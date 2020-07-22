@@ -214,14 +214,13 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             except Exception as e:
                 LOG.error("failed to run execute batch: %s", e,
                           exec_info=True)
-                raise
 
         # Let other work batch together
         eventlet.sleep(0.1)
 
         # Run all pending tasks, which might be a no op
         # if pending tasks already ran
-        eventlet.spawn_n(do_work)
+        eventlet.spawn(do_work)
 
         # Wait for our result key
         # as the result might be done before the above task starts

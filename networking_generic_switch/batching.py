@@ -88,7 +88,7 @@ class BatchList(object):
             # Stop after the configured timeout.
             stop=tenacity.stop_after_delay(300),
             # Wait for the configured interval between attempts.
-            wait=tenacity.wait_fixed(1),
+            wait=tenacity.wait_fixed(2),
         )
         def _acquire_lock_with_retry():
             lock_acquired = lock.acquire()
@@ -196,7 +196,7 @@ class BatchList(object):
     def wait_for_result(self, result_key, result_events, watch_cancel):
         """Blocks until result is received"""
         for event in result_events:
-            LOG.debug("Got: event %s", event)
+            LOG.debug("Got event: %s", event)
             # TODO(johngarbutt): check this is the event we wanted!
             watch_cancel()
 
