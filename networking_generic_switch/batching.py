@@ -86,7 +86,7 @@ class BatchList(object):
             # Retry if we haven't got the lock yet
             retry=tenacity.retry_if_result(lambda x: x is False),
             # Stop after the configured timeout.
-            stop=tenacity.stop_after_delay(300),
+            stop=tenacity.stop_after_delay(400),
             # Wait for the configured interval between attempts.
             wait=tenacity.wait_fixed(2),
         )
