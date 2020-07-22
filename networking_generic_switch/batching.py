@@ -76,7 +76,7 @@ class BatchList(object):
             return
 
         LOG.debug("Getting lock to execute %d batches", len(batches))
-        lock_ttl_seconds = 30
+        lock_ttl_seconds = 300
         lock_name = self.EXEC_LOCK % self.switch_name
         lock = self.client.lock(lock_name, lock_ttl_seconds)
 
