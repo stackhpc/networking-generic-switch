@@ -164,7 +164,8 @@ class BatchList(object):
                     result_dict['result_key'],
                     json.dumps(result_dict['result']).encode('utf-8'))
                 if not success:
-                    # TODO: should we fail to delete the key at this point?
+                    # TODO(johngarbutt) should we fail to delete the key at
+                    #  this point?
                     LOG.error("failed to report batch result for: %s",
                               batch)
                 else:
