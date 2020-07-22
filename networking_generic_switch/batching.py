@@ -160,6 +160,8 @@ class BatchList(object):
             # tell the waiting threads we are done
             LOG.debug("write results to etcd")
             for input_key, result_dict in results.items():
+                # TODO(johngarbutt) create this with a lease
+                #   so auto delete if no one gets the result?
                 success = self.client.create(
                     result_dict['result_key'],
                     json.dumps(result_dict['result']).encode('utf-8'))
