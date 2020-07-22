@@ -225,7 +225,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
         # Wait for our result key
         # as the result might be done before the above task starts
-        output = self.batch_list.wait_for_result(**watch_info)
+        output = self.batch_list.wait_for_result(*watch_info)
         LOG.debug("Got batch result: %s", output)
         return output
 
