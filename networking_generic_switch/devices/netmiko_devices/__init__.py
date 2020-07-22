@@ -202,7 +202,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     def _batch_up_commands(self, cmd_set):
         # request that the cmd_set by executed
-        result_info = self.batch_list.add_batch(cmd_set)
+        watch_info = self.batch_list.add_batch(cmd_set)
 
         def do_work():
             LOG.debug("starting to do work")
@@ -216,17 +216,16 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                           exec_info=True)
                 raise
 
-        # Run all pending tasks, which might be a no op
-        # if pending tasks already ran
-        # thread = eventlet.spawn(do_work)
-
         # Let other work batch together
         eventlet.sleep(0.1)
-        # Process all pending batches, including us, if required
-        do_work()
 
-        # we might get ouput before the task above runs
-        output = self.batch_list.get_result(**result_info)
+        # Run all pending tasks, which might be a no op
+        # if pending tasks already ran
+        eventlet.spawn_n(do_work)
+
+        # Wait for our result key
+        # as the result might be done before the above task starts
+        output = self.batch_list.wait_for_result(**watch_info)
         LOG.debug("Got batch result: %s", output)
         return output
 

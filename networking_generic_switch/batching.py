@@ -12,11 +12,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import atexit
 import json
 
 import etcd3gw
-import eventlet
 from oslo_log import log as logging
 from oslo_utils import uuidutils
 import tenacity
@@ -39,12 +37,18 @@ class BatchList(object):
                 host="10.225.1.1", port=2379)
 
     def add_batch(self, cmds):
-        """Clients add batch, given key to wait on for completion"""
+        """Clients add batch, given key to wait on for completion."""
         # TODO(johngarbutt) update this so we preserve insertion order
         uuid = uuidutils.generate_uuid()
         result_key = self.RESULT_ITEM_KEY % (self.switch_name, uuid)
         input_key = self.INPUT_ITEM_KEY % (self.switch_name, uuid)
-        # TODO(johngarbutt) add a date it was added, so it can timeout?
+
+        # Start waiting on the key we expect to be created
+        # Do this before anyone knows to create it, to avoid racing
+
+        result_events, watch_cancel = self.client.watch(result_key)
+
+        # TODO(johngarbutt) add a lease so this times out?
         event = {
             "uuid": uuid,
             "input_key": input_key,
@@ -55,14 +59,9 @@ class BatchList(object):
         success = self.client.create(input_key, value)
         if not success:
             raise Exception("failed to add batch to key: %s", input_key)
-        keys = self.client.get(input_key, metadata=True)
-        if len(keys) != 1:
-            raise Exception("failed find value we just added")
-        LOG.debug("written to key %s", input_key)
-        return {
-            "version": keys[0][1]["create_revision"],
-            "result_key": result_key
-        }
+        LOG.debug("written input key %s", input_key)
+
+        return result_key, result_events, watch_cancel
 
     def execute_pending_batches(self, get_connection, do_batch, save_config):
         """Execute all batches currently registered.
@@ -174,9 +173,11 @@ class BatchList(object):
                     LOG.error("unable to delete input key: %s",
                               input_key)
 
+            LOG.debug("Finished executing keys: %s", keys)
+
         LOG.debug("end of lock %s", lock_name)
 
-    def get_result(self, result_key, version):
+    def get_result(self, result_key, **kwargs):
         LOG.debug("fetching key %s", result_key)
         # TODO(johngarbutt) need to look in the event!
         results = self.client.get(result_key, metadata=True)
@@ -192,16 +193,11 @@ class BatchList(object):
             LOG.error("Unable to delete key %s", result_key)
         return batch_result
 
-    def wait_for_result(self, result_key, version):
+    def wait_for_result(self, result_key, result_events, watch_cancel):
         """Blocks until result is received"""
-        LOG.debug("starting to watch key: %s", result_key)
-        events, cancel = self.client.watch(result_key,
-                                           start_revision=(version + 1))
-        eventlet.sleep(0)
-
-        # TODO(johngarbutt) timeout?
-        for event in events:
+        for event in result_events:
             LOG.debug("Got: event %s", event)
-            cancel()
+            # TODO(johngarbutt): check this is the event we wanted!
+            watch_cancel()
 
-        return self.get_result(result_key, version)
+        return self.get_result(result_key)
