@@ -34,10 +34,13 @@ class Cumulus(netmiko_devices.NetmikoSwitch):
     """
     NETMIKO_DEVICE_TYPE = "linux"
 
-    # TODO(johngarbutt): for now, assume allowed VLANs are on trunks already
-    #  But really this should be implemented and then opt out via config.
-    ADD_NETWORK = []
-    DELETE_NETWORK = []
+    ADD_NETWORK = [
+        'net add vlan {segmentation_id}',
+    ]
+
+    DELETE_NETWORK = [
+        'net del vlan {segmentation_id}',
+    ]
 
     PLUG_PORT_TO_NETWORK = [
         'net add interface {port} bridge access {segmentation_id}',
