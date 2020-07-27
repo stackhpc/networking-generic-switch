@@ -40,6 +40,8 @@ NGS_INTERNAL_OPTS = [
     # String format for network name to configure on switches.
     # Accepts {network_id} and {segmentation_id} formatting options.
     {'name': 'ngs_network_name_format', 'default': '{network_id}'},
+    # EXPERIMENTAL: when true try to batch up in flight switch requests
+    {'name': 'ngs_batch_requests', 'default': False},
 ]
 
 
@@ -129,6 +131,11 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
         network_name_format = self.ngs_config['ngs_network_name_format']
         return network_name_format.format(network_id=network_id,
                                           segmentation_id=segmentation_id)
+
+    def _batch_requests(self):
+        """Return whether to batch up requests to the switch."""
+        return strutils.bool_from_string(
+            self.ngs_config['ngs_batch_requests'])
 
     @abc.abstractmethod
     def add_network(self, segmentation_id, network_id):

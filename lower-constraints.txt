@@ -19,6 +19,7 @@ deprecation==1.0
 doc8==0.6.0
 docutils==0.11
 dogpile.cache==0.6.2
+etcd3gw===0.2.4
 eventlet==0.18.2
 extras==1.0.0
 fasteners==0.7.0
