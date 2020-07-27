@@ -42,7 +42,11 @@ NGS_INTERNAL_OPTS = [
     {'name': 'ngs_network_name_format', 'default': '{network_id}'},
     # If false, ngs will not add and delete VLANs from switches
     {'name': 'ngs_manage_vlans', 'default': True},
-    {'name': 'vlan_translation_supported', 'default': False}
+    {'name': 'vlan_translation_supported', 'default': False},
+    # If False, ngs will skip saving configuration on devices
+    {'name': 'ngs_save_configuration', 'default': True},
+    # When true try to batch up in flight switch requests
+    {'name': 'ngs_batch_requests', 'default': False},
 ]
 
 
@@ -136,6 +140,11 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
     def _do_vlan_management(self):
         """Check if drivers should add and remove VLANs from switches."""
         return strutils.bool_from_string(self.ngs_config['ngs_manage_vlans'])
+
+    def _batch_requests(self):
+        """Return whether to batch up requests to the switch."""
+        return strutils.bool_from_string(
+            self.ngs_config['ngs_batch_requests'])
 
     @abc.abstractmethod
     def add_network(self, segmentation_id, network_id):
