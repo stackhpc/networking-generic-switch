@@ -147,6 +147,7 @@ class BatchList(object):
                     }
                     # LOG.debug("got result: %s", results[input_key])
                     # lock.refresh()
+                LOG.debug("doing all batches: %s", all_cmds)
                 result = do_batch(connection, all_cmds)
                 LOG.debug("got result: %s", result)
 
