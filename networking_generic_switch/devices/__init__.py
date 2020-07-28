@@ -38,6 +38,7 @@ NGS_INTERNAL_OPTS = [
     {'name': 'ngs_switchport_mode', 'default': 'access'},
     # If True, disable switch ports that are not in use.
     {'name': 'ngs_disable_inactive_ports', 'default': False},
+    {'name': 'ngs_batch_requests', 'default': False},
 ]
 
 
@@ -104,6 +105,11 @@ class GenericSwitchDevice(object):
         """Return whether inactive ports should be disabled."""
         return strutils.bool_from_string(
             self.ngs_config['ngs_disable_inactive_ports'])
+
+    def _batch_requests(self):
+        """Return whether to batch up requests to the switch."""
+        return strutils.bool_from_string(
+            self.ngs_config['ngs_batch_requests'])
 
     @abc.abstractmethod
     def add_network(self, segmentation_id, network_id):

@@ -26,9 +26,6 @@ coordination_opts = [
                default=60,
                help='Timeout in seconds after which an attempt to grab a lock '
                     'is failed. Value of 0 is forever.'),
-    cfg.BoolOpt('batch_requests', default=False,
-                help='EXPERIMENTAL: option to batch up concurrent requests '
-                     'to each switche. Only tested with Cumulus driver.')
 ]
 
 CONF.register_opts(coordination_opts, group='ngs_coordination')
