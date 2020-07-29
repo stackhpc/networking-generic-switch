@@ -229,8 +229,6 @@ class SwitchBatch(object):
     def __init__(self, switch_name, etcd_url=None, switch_queue=None):
         if switch_queue is None:
             parsed_url = netutils.urlsplit(etcd_url)
-            LOG.debug(parsed_url)
-            LOG.debug(etcd_url)
             host = parsed_url.hostname
             port = parsed_url.port
             # TODO(johngarbutt): support certs
