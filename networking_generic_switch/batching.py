@@ -229,11 +229,16 @@ class SwitchBatch(object):
     def __init__(self, switch_name, etcd_url=None, switch_queue=None):
         if switch_queue is None:
             parsed_url = netutils.urlsplit(etcd_url)
+            LOG.debug(parsed_url)
+            LOG.debug(etcd_url)
             host = parsed_url.hostname
             port = parsed_url.port
             # TODO(johngarbutt): support certs
             protocol = 'https' if parsed_url.scheme.endswith(
                 'https') else 'http'
+            kwargs = dict(host=host, port=port,
+                          protocol=protocol, timeout=30)
+            LOG.debug(kwargs)
             etcd_client = etcd3gw.client(
                 host=host, port=port, protocol=protocol,
                 timeout=30)
