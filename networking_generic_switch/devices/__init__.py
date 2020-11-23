@@ -38,6 +38,8 @@ NGS_INTERNAL_OPTS = [
     {'name': 'ngs_switchport_mode', 'default': 'access'},
     # If True, disable switch ports that are not in use.
     {'name': 'ngs_disable_inactive_ports', 'default': False},
+    # If false, ngs will not add and delete VLANs from switches
+    {'name': 'ngs_manage_vlans', 'default': True},
     # EXPERIMENTAL: when true try to batch up in flight switch requests
     {'name': 'ngs_batch_requests', 'default': False},
 ]
@@ -107,6 +109,24 @@ class GenericSwitchDevice(object):
         return strutils.bool_from_string(
             self.ngs_config['ngs_disable_inactive_ports'])
 
+<<<<<<< HEAD
+=======
+    def _get_network_name(self, network_id, segmentation_id):
+        """Return a network name to configure on switches.
+
+        :param network_id: ID of the network.
+        :param segmentation_id: segmentation ID of the network.
+        :returns: a formatted network name.
+        """
+        network_name_format = self.ngs_config['ngs_network_name_format']
+        return network_name_format.format(network_id=network_id,
+                                          segmentation_id=segmentation_id)
+
+    def _do_vlan_management(self):
+        """Check if drivers should add and remove VLANs from switches."""
+        return strutils.bool_from_string(self.ngs_config['ngs_manage_vlans'])
+
+>>>>>>> d6b4d63... WIP: Add ngs_manage_vlans configuration
     def _batch_requests(self):
         """Return whether to batch up requests to the switch."""
         return strutils.bool_from_string(
