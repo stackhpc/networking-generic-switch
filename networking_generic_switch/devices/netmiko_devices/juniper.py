@@ -45,9 +45,9 @@ class Juniper(netmiko_devices.NetmikoSwitch):
         # associated with an access mode port.
         'delete interfaces {port} unit 0 family ethernet-switching '
         'vlan members',
-        'delete interfaces {port} native-vlan-id',
         'set interfaces {port} unit 0 family ethernet-switching '
         'interface-mode access',
+        'set interfaces {port} unit 0 family ethernet-switching '
         'vlan members {segmentation_id}',
     )
 
