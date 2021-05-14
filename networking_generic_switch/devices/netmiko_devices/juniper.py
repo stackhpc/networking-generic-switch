@@ -46,6 +46,8 @@ class Juniper(netmiko_devices.NetmikoSwitch):
         'delete interfaces {port} unit 0 family ethernet-switching '
         'vlan members',
         'set interfaces {port} unit 0 family ethernet-switching '
+        'interface-mode access',
+        'set interfaces {port} unit 0 family ethernet-switching '
         'vlan members {segmentation_id}',
     )
 
