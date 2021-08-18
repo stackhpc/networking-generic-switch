@@ -109,8 +109,6 @@ class GenericSwitchDevice(object):
         return strutils.bool_from_string(
             self.ngs_config['ngs_disable_inactive_ports'])
 
-<<<<<<< HEAD
-=======
     def _get_network_name(self, network_id, segmentation_id):
         """Return a network name to configure on switches.
 
@@ -126,7 +124,6 @@ class GenericSwitchDevice(object):
         """Check if drivers should add and remove VLANs from switches."""
         return strutils.bool_from_string(self.ngs_config['ngs_manage_vlans'])
 
->>>>>>> d6b4d63... WIP: Add ngs_manage_vlans configuration
     def _batch_requests(self):
         """Return whether to batch up requests to the switch."""
         return strutils.bool_from_string(
