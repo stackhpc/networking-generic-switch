@@ -23,6 +23,7 @@ class DellOS10(netmiko_devices.NetmikoSwitch):
 
     ADD_NETWORK = (
         "interface vlan {segmentation_id}",
+        "description {network_name}",
         "exit",
     )
 
