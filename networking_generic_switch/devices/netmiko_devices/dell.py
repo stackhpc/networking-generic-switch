@@ -18,7 +18,6 @@ from networking_generic_switch.devices import netmiko_devices
 from networking_generic_switch import exceptions as exc
 
 
-
 class DellOS10(netmiko_devices.NetmikoSwitch):
     """Netmiko device driver for Dell PowerSwitch switches."""
 
