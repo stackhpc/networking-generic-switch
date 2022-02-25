@@ -400,16 +400,7 @@ class GenericSwitchDriver(api.MechanismDriver):
 
         :returns: True if vlan translation is required, False otherwise.
         """
-        core_plugin = directory.get_plugin()
-        for sub_port in trunk_details.get('sub_ports', {}):
-            sp_id = sub_port['port_id']
-            sp_sid = sub_port['segmentation_id']
-            sp_port = core_plugin.get_port(context._plugin_context, sp_id)
-            sp_net = core_plugin.get_network(context._plugin_context,
-                                             sp_port['network_id'])
-            if sp_sid != sp_net['provider:segmentation_id']:
-                return True
-
+        # FIXME: removed for simplicity
         return False
 
     def bind_port(self, context):
