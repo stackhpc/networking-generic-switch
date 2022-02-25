@@ -174,7 +174,6 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
     def del_network(self, segmentation_id, network_id):
         pass
 
-    @abc.abstractmethod
     def plug_port_to_network_trunk(self, port_id, segmentation_id, trunk_details=None, vtr=False):
         pass
 
