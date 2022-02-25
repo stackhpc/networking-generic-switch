@@ -59,7 +59,8 @@ class TestNetmikoDellOS10(test_netmiko_base.NetmikoSwitchTestBase):
         ]
         res = self.switch.get_trunk_port_cmds_no_vlan_translation(
             '2222', 777, trunk_details)
-        self.assertEqual(['interface 2222', 'switchport mode trunk',
+        self.assertEqual(['interface 2222', 'switchport mode access',
+                          'switchport mode trunk',
                           'switchport access vlan 777',
                           'interface 2222',
                           'switchport trunk allowed vlan 130'],
