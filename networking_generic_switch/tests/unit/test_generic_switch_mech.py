@@ -787,6 +787,56 @@ class TestGenericSwitchDriver(unittest.TestCase):
                                       resources.PORT,
                                       'GENERICSWITCH')
 
+    @mock.patch.object(gsm.GenericSwitchDriver,
+                       '_is_vlan_translation_required', return_value=False)
+    @mock.patch.object(provisioning_blocks, 'add_provisioning_component')
+    def test_bind_port_trunk(self, m_apc, m_list, m_vlan):
+        driver = gsm.GenericSwitchDriver()
+        driver.initialize()
+        mock_context = mock.create_autospec(driver_context.PortContext)
+        mock_context._plugin_context = mock.MagicMock()
+        trunk_details = {'trunk_id': 'aaa-bbb-ccc-ddd',
+                         'sub_ports': [{'segmentation_id': 130,
+                                        'port_id': 'aaa-bbb-ccc-ddd',
+                                        'segmentation_type': 'vlan',
+                                        'mac_address': u'fa:16:3e:1c:c2:7e'}]}
+        mock_context.network.current = {
+            'provider:physical_network': 'physnet1'
+        }
+        mock_context.current = {'binding:profile':
+                                {'local_link_information':
+                                    [
+                                        {
+                                            'switch_info': 'foo',
+                                            'port_id': '2222'
+                                        }
+                                    ]
+                                 },
+                                'binding:vnic_type': 'baremetal',
+                                'id': 'aaaa-bbbb-cccc',
+                                'trunk_details': trunk_details}
+        mock_context.network = mock.Mock()
+        mock_context.network.current = {
+            'provider:segmentation_id': 123,
+            'provider:physical_network': 'physnet1'
+        }
+        mock_context.segments_to_bind = [
+            {
+                'segmentation_id': 777,
+                'id': 123
+            }
+        ]
+
+        driver.bind_port(mock_context)
+        self.switch_mock.plug_port_to_network_trunk.assert_called_once_with(
+            '2222', 777, trunk_details, False)
+        mock_context.set_binding.assert_called_with(123, 'other', {})
+        m_apc.assert_called_once_with(mock_context._plugin_context,
+                                      mock_context.current['id'],
+                                      resources.PORT,
+                                      'GENERICSWITCH')
+
+
     @mock.patch.object(provisioning_blocks, 'add_provisioning_component')
     def test_bind_portgroup(self, m_apc, m_list):
         driver = gsm.GenericSwitchDriver()
