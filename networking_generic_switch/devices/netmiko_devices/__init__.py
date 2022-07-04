@@ -213,7 +213,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
     @check_output('add network')
     def add_network(self, segmentation_id, network_id):
         if not self._do_vlan_management():
-            LOG.info(f"Skipping add network for {segmentation_id}")
+            LOG.info("Skipping add network for %s" % segmentation_id)
             return ""
 
         # NOTE(zhenguo): Remove dashes from uuid as on most devices 32 chars
@@ -231,7 +231,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
     @check_output('delete network')
     def del_network(self, segmentation_id, network_id):
         if not self._do_vlan_management():
-            LOG.info(f"Skipping delete network for {segmentation_id}")
+            LOG.info("Skipping delete network for %s" % segmentation_id)
             return ""
 
         # NOTE(zhenguo): Remove dashes from uuid as on most devices 32 chars
