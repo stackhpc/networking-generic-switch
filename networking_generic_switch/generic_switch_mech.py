@@ -343,13 +343,14 @@ class GenericSwitchDriver(api.MechanismDriver):
                 'local_link_information')
             if not local_link_information:
                 return
-            switch_info = local_link_information[0].get('switch_info')
-            switch_id = local_link_information[0].get('switch_id')
-            switch = device_utils.get_switch_device(
-                self.switches, switch_info=switch_info,
-                ngs_mac_address=switch_id)
-            if not switch:
-                return
+            for link in local_link_information:
+                switch_info = link.get('switch_info')
+                switch_id = link.get('switch_id')
+                switch = device_utils.get_switch_device(
+                    self.switches, switch_info=switch_info,
+                    ngs_mac_address=switch_id)
+                if not switch:
+                    return
             provisioning_blocks.provisioning_complete(
                 context._plugin_context, port['id'], resources.PORT,
                 GENERIC_SWITCH_ENTITY)
@@ -432,44 +433,90 @@ class GenericSwitchDriver(api.MechanismDriver):
         """
 
         port = context.current
+        network = context.network.current
         binding_profile = port['binding:profile']
         local_link_information = binding_profile.get('local_link_information')
+
         if self._is_port_supported(port) and local_link_information:
-            switch_info = local_link_information[0].get('switch_info')
-            switch_id = local_link_information[0].get('switch_id')
+            # NOTE(jamesdenton): If any link of the port is invalid, none
+            # of the links should be processed.
+            if not self._is_link_valid(port, network):
+                return
+
+            is_802_3ad = self._is_802_3ad(port)
+            for link in local_link_information:
+                port_id = link.get('port_id')
+                switch_info = link.get('switch_info')
+                switch_id = link.get('switch_id')
+                switch = device_utils.get_switch_device(
+                    self.switches, switch_info=switch_info,
+                    ngs_mac_address=switch_id)
+
+                segments = context.segments_to_bind
+                # If segmentation ID is None, set vlan 1
+                segmentation_id = segments[0].get('segmentation_id') or 1
+                LOG.debug("Putting port %(port_id)s on %(switch_info)s "
+                          "to vlan: %(segmentation_id)s",
+                          {'port_id': port_id, 'switch_info': switch_info,
+                           'segmentation_id': segmentation_id})
+                # Move port to network
+                if is_802_3ad and hasattr(switch, 'plug_bond_to_network'):
+                    switch.plug_bond_to_network(port_id, segmentation_id)
+                else:
+                    switch.plug_port_to_network(port_id, segmentation_id)
+                LOG.info("Successfully bound port %(port_id)s in segment "
+                         "%(segment_id)s on device %(device)s",
+                         {'port_id': port['id'], 'device': switch_info,
+                          'segment_id': segmentation_id})
+
+            context.set_binding(segments[0][api.ID],
+                                portbindings.VIF_TYPE_OTHER, {})
+            provisioning_blocks.add_provisioning_component(
+                context._plugin_context, port['id'], resources.PORT,
+                GENERIC_SWITCH_ENTITY)
+
+    def _is_link_valid(self, port, network):
+        """Return whether a link references valid switch and physnet.
+
+        If the local link information refers to a switch that is not
+        known to NGS or the switch is not associated with the respective
+        physnet, the port will not be processed and no exception will
+        be raised.
+
+        :param port: The port to check
+        :param network: the network mapped to physnet
+        :returns: Whether the link refers to a configured switch and/or switch
+                  is associated with physnet
+        """
+
+        binding_profile = port['binding:profile']
+        local_link_information = binding_profile.get('local_link_information')
+
+        for link in local_link_information:
+            switch_info = link.get('switch_info')
+            switch_id = link.get('switch_id')
             switch = device_utils.get_switch_device(
                 self.switches, switch_info=switch_info,
                 ngs_mac_address=switch_id)
             if not switch:
-                return
-            network = context.network.current
+                LOG.error("Cannot bind port %(port)s as device %(device)s "
+                          "is not configured. Check baremetal port link "
+                          "configuration.",
+                          {'port': port['id'],
+                           'device': switch_info})
+                return False
+
             physnet = network['provider:physical_network']
             switch_physnets = switch._get_physical_networks()
+
             if switch_physnets and physnet not in switch_physnets:
-                LOG.error("Cannot bind port %(port)s as device %(device)s is "
-                          "not on physical network %(physnet)",
-                          {'port_id': port['id'], 'device': switch_info,
+                LOG.error("Cannot bind port %(port)s as device %(device)s "
+                          "is not on physical network %(physnet)s. Check "
+                          "baremetal port link configuration.",
+                          {'port': port['id'], 'device': switch_info,
                            'physnet': physnet})
-                return
-            port_id = local_link_information[0].get('port_id')
-            segments = context.segments_to_bind
-            # If segmentation ID is None, set vlan 1
-            segmentation_id = segments[0].get('segmentation_id') or 1
-            provisioning_blocks.add_provisioning_component(
-                context._plugin_context, port['id'], resources.PORT,
-                GENERIC_SWITCH_ENTITY)
-            LOG.debug("Putting port %(port_id)s on %(switch_info)s to vlan: "
-                      "%(segmentation_id)s",
-                      {'port_id': port_id, 'switch_info': switch_info,
-                       'segmentation_id': segmentation_id})
-            # Move port to network
-            switch.plug_port_to_network(port_id, segmentation_id)
-            LOG.info("Successfully bound port %(port_id)s in segment "
-                     "%(segment_id)s on device %(device)s",
-                     {'port_id': port['id'], 'device': switch_info,
-                      'segment_id': segmentation_id})
-            context.set_binding(segments[0][api.ID],
-                                portbindings.VIF_TYPE_OTHER, {})
+                return False
+        return True
 
     @staticmethod
     def _is_port_supported(port):
@@ -498,6 +545,21 @@ class GenericSwitchDriver(api.MechanismDriver):
         vif_type = port[portbindings.VIF_TYPE]
         return vif_type == portbindings.VIF_TYPE_OTHER
 
+    @staticmethod
+    def _is_802_3ad(port):
+        """Return whether a port is using 802.3ad link aggregation.
+
+        :param port: The port to check
+        :returns: Whether the port is a port group using 802.3ad link
+                  aggregation.
+        """
+        binding_profile = port['binding:profile']
+        local_group_information = binding_profile.get(
+            'local_group_information')
+        if not local_group_information:
+            return False
+        return local_group_information.get('bond_mode') in ['4', '802.3ad']
+
     def _unplug_port_from_network(self, port, network):
         """Unplug a port from a network.
 
@@ -512,33 +574,39 @@ class GenericSwitchDriver(api.MechanismDriver):
         local_link_information = binding_profile.get('local_link_information')
         if not local_link_information:
             return
-        switch_info = local_link_information[0].get('switch_info')
-        switch_id = local_link_information[0].get('switch_id')
-        switch = device_utils.get_switch_device(
-            self.switches, switch_info=switch_info,
-            ngs_mac_address=switch_id)
-        if not switch:
-            return
-        port_id = local_link_information[0].get('port_id')
-        # If segmentation ID is None, set vlan 1
-        segmentation_id = network.get('provider:segmentation_id') or 1
-        LOG.debug("Unplugging port %(port)s on %(switch_info)s from vlan: "
-                  "%(segmentation_id)s",
-                  {'port': port_id, 'switch_info': switch_info,
-                   'segmentation_id': segmentation_id})
-        try:
-            switch.delete_port(port_id, segmentation_id)
-        except Exception as e:
-            LOG.error("Failed to unplug port %(port_id)s "
-                      "on device: %(switch)s from network %(net_id)s "
-                      "reason: %(exc)s",
-                      {'port_id': port['id'], 'net_id': network['id'],
-                       'switch': switch_info, 'exc': e})
-            raise e
-        LOG.info('Port %(port_id)s has been unplugged from network '
-                 '%(net_id)s on device %(device)s',
-                 {'port_id': port['id'], 'net_id': network['id'],
-                  'device': switch_info})
+
+        is_802_3ad = self._is_802_3ad(port)
+        for link in local_link_information:
+            switch_info = link.get('switch_info')
+            switch_id = link.get('switch_id')
+            switch = device_utils.get_switch_device(
+                self.switches, switch_info=switch_info,
+                ngs_mac_address=switch_id)
+            if not switch:
+                continue
+            port_id = link.get('port_id')
+            # If segmentation ID is None, set vlan 1
+            segmentation_id = network.get('provider:segmentation_id') or 1
+            LOG.debug("Unplugging port %(port)s on %(switch_info)s from vlan: "
+                      "%(segmentation_id)s",
+                      {'port': port_id, 'switch_info': switch_info,
+                       'segmentation_id': segmentation_id})
+            try:
+                if is_802_3ad and hasattr(switch, 'unplug_bond_from_network'):
+                    switch.unplug_bond_from_network(port_id, segmentation_id)
+                else:
+                    switch.delete_port(port_id, segmentation_id)
+            except Exception as e:
+                LOG.error("Failed to unplug port %(port_id)s "
+                          "on device: %(switch)s from network %(net_id)s "
+                          "reason: %(exc)s",
+                          {'port_id': port['id'], 'net_id': network['id'],
+                           'switch': switch_info, 'exc': e})
+                raise e
+            LOG.info('Port %(port_id)s has been unplugged from network '
+                     '%(net_id)s on device %(device)s',
+                     {'port_id': port['id'], 'net_id': network['id'],
+                      'device': switch_info})
 
     def _get_devices_by_physnet(self, physnet):
         """Generator yielding switches on a particular physical network.
