@@ -192,6 +192,10 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             yield net_connect
 
     def send_commands_to_device(self, cmd_set):
+        if not cmd_set:
+            LOG.debug("Nothing to execute")
+            return
+
         # If configured, batch up requests to the switch
         if self.batch_cmds is not None:
             return self.batch_cmds.do_batch(
@@ -200,10 +204,6 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         return self._send_commands_to_device(cmd_set)
 
     def _send_commands_to_device(self, cmd_set):
-        if not cmd_set:
-            LOG.debug("Nothing to execute")
-            return
-
         try:
             with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
                 with self._get_connection() as net_connect:
