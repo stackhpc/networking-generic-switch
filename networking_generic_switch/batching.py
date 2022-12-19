@@ -107,7 +107,10 @@ class SwitchQueue(object):
             # TODO(johngarbutt) check we have the create event and result?
             result_dict = self._get_and_delete_result(result_key)
             LOG.debug("got result: %s", result_dict)
-            return result_dict["result"]
+            if "result" in result_dict:
+                return result_dict["result"]
+            else:
+                raise SomeException(result_dict["error"])
 
         return watcher, wait_for_key
 
@@ -152,7 +155,7 @@ class SwitchQueue(object):
             batches.append(batch)
         return batches
 
-    def record_result(self, result, batches):
+    def record_results(self, batches):
         """Record the result from executing given batch list.
 
         We assume that a lock is held before getting a fresh list
@@ -163,7 +166,6 @@ class SwitchQueue(object):
 
         # Write results first, so watchers seen these quickly
         for batch in batches:
-            batch["result"] = result
             # TODO(johngarbutt) create this with a lease
             #   so auto delete if no one gets the result?
             success = self.client.create(
@@ -321,15 +323,10 @@ class SwitchBatch(object):
                 return
 
             LOG.debug("Starting to execute %d batches", len(batches))
-            all_cmds = []
-            for batch in batches:
-                all_cmds += batch['cmds']
-
-            # Execute batch function with all the commands
-            result = batch_fn(all_cmds)
+            batch_fn(batches)
 
             # Tell request watchers the result and
             # tell workers which batches have now been executed
-            self.queue.record_result(result, batches)
+            self.queue.record_results(batches)
 
         LOG.debug("end of lock for %s", self.switch_name)

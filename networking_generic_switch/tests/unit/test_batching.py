@@ -76,11 +76,11 @@ class SwitchQueueTest(fixtures.TestWithFixtures):
 
     def test_record_result(self):
         batches = [
-            {"result_key": "result1", "input_key": "input1"},
-            {"result_key": "result2", "input_key": "input2"},
+            {"result_key": "result1", "input_key": "input1", "result": "asdf"},
+            {"result_key": "result2", "input_key": "input2", "error": "foo"},
         ]
 
-        self.queue.record_result("asdf", batches)
+        self.queue.record_results(batches)
 
         self.assertEqual(2, self.client.create.call_count)
         self.client.create.assert_has_calls([
@@ -90,8 +90,9 @@ class SwitchQueueTest(fixtures.TestWithFixtures):
                 b'"result": "asdf", "result_key": "result1"}'),
             mock.call(
                 "result2",
-                b'{"input_key": "input2", '
-                b'"result": "asdf", "result_key": "result2"}'),
+                b'{"error": "foo", '
+                b'"input_key": "input2", '
+                b'"result_key": "result2"}'),
         ])
         self.assertEqual(2, self.client.delete.call_count)
         self.client.delete.assert_has_calls([
@@ -185,7 +186,8 @@ class SwitchBatchTest(fixtures.TestWithFixtures):
 
         self.batch._execute_pending_batches(batch)
 
-        batch.assert_called_once_with(['cmd1', 'cmd2', 'cmd3', 'cmd4'])
+        batch.assert_called_once_with([{'cmds': ['cmd1', 'cmd2']},
+                                       {'cmds': ['cmd3', 'cmd4']}])
         self.queue.acquire_worker_lock.assert_called_once_with()
         lock.__enter__.assert_called_once_with()
         lock.__exit__.assert_called_once_with(None, None, None)

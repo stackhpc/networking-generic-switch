@@ -192,18 +192,32 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             yield net_connect
 
     def send_commands_to_device(self, cmd_set):
-        # If configured, batch up requests to the switch
-        if self.batch_cmds is not None:
-            return self.batch_cmds.do_batch(
-                cmd_set,
-                self._send_commands_to_device)
-        return self._send_commands_to_device(cmd_set)
-
-    def _send_commands_to_device(self, cmd_set):
         if not cmd_set:
             LOG.debug("Nothing to execute")
             return
 
+        # If configured, batch up requests to the switch
+        if self.batch_cmds is not None:
+            return self.batch_cmds.do_batch(
+                cmd_set,
+                self._send_commands_to_device_batched)
+        return self._send_commands_to_device(cmd_set)
+
+    def _send_commands_to_device_batched(self, batches):
+        with self._get_connection() as net_connect:
+            for batch in batches:
+                try:
+                    output = self.send_config_set(net_connect, batch['cmds'])
+                    batch["result"] = output
+                except Exception as e:
+                    batch["error"] = str(e)
+            try:
+                self.save_configuration(net_connect)
+            except Exception as e:
+                LOG.exception("Failed to save configuration")
+                # Probably not worth failing all batches for this.
+
+    def _send_commands_to_device(self, cmd_set):
         try:
             with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
                 with self._get_connection() as net_connect:
