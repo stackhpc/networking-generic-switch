@@ -46,7 +46,8 @@ class SwitchQueueTest(fixtures.TestWithFixtures):
             b'{"cmds": ["cmd1", "cmd2"], '
             b'"input_key": "/ngs/batch/switch1/input/uuid", '
             b'"result_key": "/ngs/batch/switch1/output/uuid", '
-            b'"uuid": "uuid"}'
+            b'"uuid": "uuid"}',
+            lease=mock.ANY
         )
 
     def test_get_and_delete_result(self):
@@ -83,16 +84,19 @@ class SwitchQueueTest(fixtures.TestWithFixtures):
         self.queue.record_results(batches)
 
         self.assertEqual(2, self.client.create.call_count)
+        self.client.lease.assert_called_once_with(ttl=600)
         self.client.create.assert_has_calls([
             mock.call(
                 "result1",
                 b'{"input_key": "input1", '
-                b'"result": "asdf", "result_key": "result1"}'),
+                b'"result": "asdf", "result_key": "result1"}',
+                lease=mock.ANY),
             mock.call(
                 "result2",
                 b'{"error": "foo", '
                 b'"input_key": "input2", '
-                b'"result_key": "result2"}'),
+                b'"result_key": "result2"}',
+                lease=mock.ANY),
         ])
         self.assertEqual(2, self.client.delete.call_count)
         self.client.delete.assert_has_calls([

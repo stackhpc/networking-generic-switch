@@ -35,6 +35,7 @@ class SwitchQueue(object):
     def __init__(self, switch_name, etcd_client):
         self.switch_name = switch_name
         self.client = etcd_client
+        self.lease_ttl = 600
 
     def add_batch_and_wait_for_result(self, cmds):
         """Clients add batch, given key events.
@@ -68,8 +69,8 @@ class SwitchQueue(object):
         }
         value = json.dumps(batch, sort_keys=True).encode("utf-8")
         try:
-            # TODO(johngarbutt) add a lease so this times out?
-            success = self.client.create(input_key, value)
+            lease = self.client.lease(ttl=self.lease_ttl)
+            success = self.client.create(input_key, value, lease=lease)
         except Exception:
             # Be sure to free watcher resources
             watcher.stop()
@@ -104,13 +105,15 @@ class SwitchQueue(object):
                 watcher.stop()
 
             LOG.debug("got event: %s", event)
+            if event["kv"]["version"] == 0:
+                raise Exception("output key was deleted, perhaps lease expired")
             # TODO(johngarbutt) check we have the create event and result?
             result_dict = self._get_and_delete_result(result_key)
             LOG.debug("got result: %s", result_dict)
             if "result" in result_dict:
                 return result_dict["result"]
             else:
-                raise SomeException(result_dict["error"])
+                raise Exception(result_dict["error"])
 
         return watcher, wait_for_key
 
@@ -165,12 +168,12 @@ class SwitchQueue(object):
         LOG.debug("write results for %s batches", len(batches))
 
         # Write results first, so watchers seen these quickly
+        lease = self.client.lease(ttl=self.lease_ttl)
         for batch in batches:
-            # TODO(johngarbutt) create this with a lease
-            #   so auto delete if no one gets the result?
             success = self.client.create(
                 batch['result_key'],
-                json.dumps(batch, sort_keys=True).encode('utf-8'))
+                json.dumps(batch, sort_keys=True).encode('utf-8'),
+                lease=lease)
             if not success:
                 # TODO(johngarbutt) should we fail to delete the key at
                 #  this point?
