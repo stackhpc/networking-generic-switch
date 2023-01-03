@@ -35,6 +35,7 @@ class SwitchQueue(object):
     def __init__(self, switch_name, etcd_client):
         self.switch_name = switch_name
         self.client = etcd_client
+        self.timeout = 60
 
     def add_batch_and_wait_for_result(self, cmds):
         """Clients add batch, given key events.
@@ -68,8 +69,8 @@ class SwitchQueue(object):
         }
         value = json.dumps(batch, sort_keys=True).encode("utf-8")
         try:
-            # TODO(johngarbutt) add a lease so this times out?
-            success = self.client.create(input_key, value)
+            lease = self.client.lease(ttl=self.timeout)
+            success = self.client.create(input_key, value, lease=lease)
         except Exception:
             # Be sure to free watcher resources
             watcher.stop()
@@ -110,7 +111,7 @@ class SwitchQueue(object):
             if "result" in result_dict:
                 return result_dict["result"]
             else:
-                raise SomeException(result_dict["error"])
+                raise Exception(result_dict["error"])
 
         return watcher, wait_for_key
 
@@ -165,12 +166,12 @@ class SwitchQueue(object):
         LOG.debug("write results for %s batches", len(batches))
 
         # Write results first, so watchers seen these quickly
+        lease = self.client.lease(ttl=self.timeout)
         for batch in batches:
-            # TODO(johngarbutt) create this with a lease
-            #   so auto delete if no one gets the result?
             success = self.client.create(
                 batch['result_key'],
-                json.dumps(batch, sort_keys=True).encode('utf-8'))
+                json.dumps(batch, sort_keys=True).encode('utf-8'),
+                lease=lease)
             if not success:
                 # TODO(johngarbutt) should we fail to delete the key at
                 #  this point?
