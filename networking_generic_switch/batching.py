@@ -131,7 +131,8 @@ class SwitchQueue(object):
         if not delete_success:
             LOG.error("unable to delete result key: %s",
                       result_key)
-        LOG.debug("deleted result for: ", result_key)
+        else:
+            LOG.debug("deleted result for: ", result_key)
         return result_dict
 
     def _get_raw_batches(self):
@@ -189,7 +190,7 @@ class SwitchQueue(object):
                 LOG.error("unable to delete input key: %s",
                           input_key)
             else:
-                LOG.debug("deleted input key: %s", input_key)
+                LOG.info("deleted input key: %s", input_key)
 
     def acquire_worker_lock(self, acquire_timeout=300, lock_ttl=120,
                             wait=None):
