@@ -16,6 +16,7 @@ import json
 import queue
 
 import etcd3gw
+from etcd3gw.utils import _decode, _encode
 from etcd3gw import watch
 import eventlet
 from oslo_log import log as logging
@@ -119,20 +120,23 @@ class SwitchQueue(object):
 
     def _get_and_delete_result(self, result_key):
         # called when watch event says the result key should exist
-        raw_results = self.client.get(result_key)
-        if len(raw_results) != 1:
+        txn = {
+            'compare': [],
+            'success': [{
+                'request_delete_range': {
+                    'key': _encode(result_key),
+                    'prev_kv': True,
+                }
+            }],
+            'failure': []
+        }
+        result = self.client.transaction(txn)
+        success = result.get('succeeded', False)
+        if not success:
             raise Exception("unable to find result: %s", result_key)
-        raw_value = raw_results[0]
-        result_dict = json.loads(raw_value.decode('utf-8'))
-        LOG.debug("fetched result for: ", result_key)
-
-        # delete key now we have the result
-        delete_success = self.client.delete(result_key)
-        if not delete_success:
-            LOG.error("unable to delete result key: %s",
-                      result_key)
-        else:
-            LOG.debug("deleted result for: ", result_key)
+        raw_value = result['responses'][0]['response_delete_range']['prev_kvs'][0]['value']
+        result_dict = json.loads(_decode(raw_value))
+        LOG.debug("fetched and deleted result for: %s", result_key)
         return result_dict
 
     def _get_raw_batches(self):
@@ -169,28 +173,34 @@ class SwitchQueue(object):
         LOG.debug("write results for %s batches", len(batches))
 
         # Write results first, so watchers seen these quickly
-        lease = self.client.lease(ttl=self.lease_ttl)
-        for batch in batches:
-            success = self.client.create(
-                batch['result_key'],
-                json.dumps(batch, sort_keys=True).encode('utf-8'),
-                lease=lease)
-            if not success:
-                # TODO(johngarbutt) should we fail to delete the key at
-                #  this point?
-                LOG.error("failed to report batch result for: %s",
-                          batch)
-
         # delete input keys so the next worker to hold the lock
         # knows not to execute these batches
+        lease = self.client.lease(ttl=self.lease_ttl)
         for batch in batches:
-            input_key = batch["input_key"]
-            delete_success = self.client.delete(input_key)
-            if not delete_success:
-                LOG.error("unable to delete input key: %s",
-                          input_key)
+            result_value = json.dumps(batch, sort_keys=True).encode('utf-8')
+            txn = {
+                'compare': [],
+                'success': [{
+                    'request_put': {
+                        'key': _encode(batch['result_key']),
+                        'value': _encode(result_value),
+                        'lease': lease.id,
+                    }
+                },
+                {
+                    'request_delete_range': {
+                        'key': _encode(batch['input_key']),
+                    }
+                }],
+                'failure': []
+            }
+            result = self.client.transaction(txn)
+            success = result.get('succeeded', False)
+            if not success:
+                LOG.error("failed to report batch result for: %s",
+                          batch)
             else:
-                LOG.info("deleted input key: %s", input_key)
+                LOG.debug("written result key: %s", batch['result_key'])
 
     def acquire_worker_lock(self, acquire_timeout=300, lock_ttl=120,
                             wait=None):
