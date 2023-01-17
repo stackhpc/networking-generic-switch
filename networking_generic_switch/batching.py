@@ -12,6 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import atexit
 import json
 import queue
 
@@ -24,7 +25,35 @@ from oslo_utils import netutils
 from oslo_utils import uuidutils
 import tenacity
 
+SHUTDOWN_TIMEOUT = 60
+
 LOG = logging.getLogger(__name__)
+
+THREAD_POOL = eventlet.greenpool.GreenPool()
+
+
+class ShutdownTimeout(Exception):
+    """Exception raised when shutdown timeout is exceeded."""
+
+
+@atexit.register
+def _wait_for_threads():
+    """Wait for all threads in the pool to complete.
+
+    This function is registered to execute at exit, to ensure that all worker
+    threads have completed. These threads may be holding switch execution locks
+    and performing switch configuration operations which should not be
+    interrupted.
+    """
+    LOG.info("Waiting %d seconds for %d threads to complete",
+             SHUTDOWN_TIMEOUT, THREAD_POOL.running())
+    try:
+        with eventlet.Timeout(SHUTDOWN_TIMEOUT, ShutdownTimeout):
+            THREAD_POOL.waitall()
+    except ShutdownTimeout:
+        LOG.error("Timed out waiting for threads to complete")
+    else:
+        LOG.info("Finished waiting for threads to complete")
 
 
 class SwitchQueue(object):
@@ -300,7 +329,7 @@ class SwitchBatch(object):
         eventlet.sleep(0.1)
         # Run all pending tasks, which might be a no op
         # if pending tasks already ran
-        eventlet.spawn_n(work_fn)
+        THREAD_POOL.spawn_n(work_fn)
 
     def _execute_pending_batches(self, batch_fn):
         """Execute all batches currently registered.
