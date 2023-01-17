@@ -341,7 +341,7 @@ class SwitchBatch(object):
         if not batches:
             LOG.debug("Skipped execution for %s", self.switch_name)
             return
-        LOG.debug("Getting lock to execute %d batches for %s",
+        LOG.debug("Found %d batches - trying to acquire lock for %s",
                   len(batches), self.switch_name)
 
         lock = self.queue.acquire_worker_lock()
@@ -355,7 +355,7 @@ class SwitchBatch(object):
             raise Exception("unable to get lock for: %s", self.switch_name)
 
         # be sure to drop the lock when we are done
-        with lock:
+        try:
             LOG.debug("got lock for %s", self.switch_name)
 
             # Fetch fresh list now we have the lock
@@ -371,5 +371,7 @@ class SwitchBatch(object):
             # Tell request watchers the result and
             # tell workers which batches have now been executed
             self.queue.record_results(batches)
+        finally:
+            lock.release()
 
         LOG.debug("end of lock for %s", self.switch_name)
