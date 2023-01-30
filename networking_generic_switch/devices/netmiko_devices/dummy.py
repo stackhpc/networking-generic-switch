@@ -10,6 +10,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import contextlib
+import random
 import re
 
 from oslo_log import log as logging
@@ -19,6 +21,28 @@ from networking_generic_switch import exceptions as exc
 
 
 LOG = logging.getLogger(__name__)
+
+RANDOM_FAILURE_PROB = 0
+"""Probability of injecting a failure event."""
+
+
+class DummyConnection(object):
+    def enable(self):
+        pass
+
+    def send_config_set(self, config_commands, cmd_verify):
+        if random.random() < RANDOM_FAILURE_PROB:
+            raise Exception("Random failure!")
+        for cmd in config_commands:
+            LOG.info("%s", cmd)
+        return "Success!"
+
+    def save_config(self):
+        pass
+
+    def send_command(self, command):
+        LOG.info("%s", command)
+        return "Success!"
 
 
 class Dummy(netmiko_devices.NetmikoSwitch):
@@ -65,11 +89,11 @@ class Dummy(netmiko_devices.NetmikoSwitch):
     device output that indicate a failure to apply configuration.
     """
 
-    def _send_commands_to_device(self, cmd_set):
-        if not cmd_set:
-            LOG.debug("Nothing to execute")
-            return
+    @contextlib.contextmanager
+    def _get_connection(self):
+        """Context manager providing a netmiko SSH connection object.
 
-        for cmd in cmd_set:
-            LOG.info("%s", cmd)
-        return "Success!"
+        This function hides the complexities of gracefully handling retrying
+        failed connection attempts.
+        """
+        yield DummyConnection()
