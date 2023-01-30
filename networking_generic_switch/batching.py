@@ -192,43 +192,40 @@ class SwitchQueue(object):
             batches.append(batch)
         return batches
 
-    def record_results(self, batches):
-        """Record the result from executing given batch list.
+    def record_result(self, batch):
+        """Record the result from executing given command set.
 
         We assume that a lock is held before getting a fresh list
         of batches, executing them, and then calling this record
         results function, before finally dropping the lock.
         """
-        LOG.debug("write results for %s batches", len(batches))
-
         # Write results and delete input keys so the next worker to hold the
         # lock knows not to execute these batches
         lease = self.client.lease(ttl=self.lease_ttl)
-        for batch in batches:
-            result_value = json.dumps(batch, sort_keys=True).encode('utf-8')
-            txn = {
-                'compare': [],
-                'success': [{
-                    'request_put': {
-                        'key': _encode(batch['result_key']),
-                        'value': _encode(result_value),
-                        'lease': lease.id,
-                    }
-                },
-                {
-                    'request_delete_range': {
-                        'key': _encode(batch['input_key']),
-                    }
-                }],
-                'failure': []
-            }
-            result = self.client.transaction(txn)
-            success = result.get('succeeded', False)
-            if not success:
-                LOG.error("failed to report batch result for: %s",
-                          batch)
-            else:
-                LOG.debug("written result key: %s", batch['result_key'])
+        result_value = json.dumps(batch, sort_keys=True).encode('utf-8')
+        txn = {
+            'compare': [],
+            'success': [{
+                'request_put': {
+                    'key': _encode(batch['result_key']),
+                    'value': _encode(result_value),
+                    'lease': lease.id,
+                }
+            },
+            {
+                'request_delete_range': {
+                    'key': _encode(batch['input_key']),
+                }
+            }],
+            'failure': []
+        }
+        result = self.client.transaction(txn)
+        success = result.get('succeeded', False)
+        if not success:
+            LOG.error("failed to report batch result for: %s",
+                      batch)
+        else:
+            LOG.debug("written result key: %s", batch['result_key'])
 
     def acquire_worker_lock(self, acquire_timeout=300, lock_ttl=120,
                             wait=None):
@@ -363,17 +360,12 @@ class SwitchBatch(object):
 
             LOG.debug("Starting to execute %d batches", len(batches))
             self._send_commands(device, batches)
-
-            # Tell request watchers the result and
-            # tell workers which batches have now been executed
-            self.queue.record_results(batches)
         finally:
             lock.release()
 
         LOG.debug("end of lock for %s", self.switch_name)
 
-    @staticmethod
-    def _send_commands(device, batches):
+    def _send_commands(self, device, batches):
         with device._get_connection() as net_connect:
             for batch in batches:
                 try:
@@ -381,6 +373,11 @@ class SwitchBatch(object):
                     batch["result"] = output
                 except Exception as e:
                     batch["error"] = str(e)
+
+                # Tell request watchers the result and
+                # tell workers which batches have now been executed
+                self.queue.record_result(batch)
+
             try:
                 device.save_configuration(net_connect)
             except Exception as e:
