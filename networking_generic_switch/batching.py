@@ -201,9 +201,8 @@ class SwitchQueue(object):
         """
         LOG.debug("write results for %s batches", len(batches))
 
-        # Write results first, so watchers seen these quickly
-        # delete input keys so the next worker to hold the lock
-        # knows not to execute these batches
+        # Write results and delete input keys so the next worker to hold the
+        # lock knows not to execute these batches
         lease = self.client.lease(ttl=self.lease_ttl)
         for batch in batches:
             result_value = json.dumps(batch, sort_keys=True).encode('utf-8')
