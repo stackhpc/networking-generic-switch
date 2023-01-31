@@ -17,7 +17,7 @@ import json
 import queue
 
 import etcd3gw
-from etcd3gw.utils import _decode, _encode
+from etcd3gw.utils import _decode, _encode, _increment_last_byte
 from etcd3gw import watch
 import eventlet
 from oslo_log import log as logging
@@ -100,19 +100,44 @@ class SwitchQueue(object):
         value = json.dumps(batch, sort_keys=True).encode("utf-8")
         try:
             lease = self.client.lease(ttl=self.lease_ttl)
-            success = self.client.create(input_key, value, lease=lease)
+            # Use a transaction rather than create() in order to extract the
+            # create revision.
+            base64_key = _encode(input_key)
+            base64_value = _encode(value)
+            txn = {
+                'compare': [{
+                    'key': base64_key,
+                    'result': 'EQUAL',
+                    'target': 'CREATE',
+                    'create_revision': 0
+                }],
+                'success': [{
+                    'request_put': {
+                        'key': base64_key,
+                        'value': base64_value,
+                    }
+                }],
+                'failure': []
+            }
+            if lease:
+                txn['success'][0]['request_put']['lease'] = lease.id
+            result = self.client.transaction(txn)
         except Exception:
             # Be sure to free watcher resources
             watcher.stop()
             raise
 
+        success = result.get('succeeded', False)
         # Be sure to free watcher resources on error
         if not success:
             watcher.stop()
             raise Exception("failed to add batch to key: %s", input_key)
 
-        LOG.debug("written input key %s", input_key)
-        return get_result
+        put_response = result['responses'][0]['response_put']
+        create_revision = put_response['header']['revision']
+        LOG.debug("written input key %s revision %s",
+                  input_key, create_revision)
+        return get_result, create_revision
 
     def _watch_for_result(self, result_key):
         # Logic based on implementation of client.watch_once()
@@ -168,22 +193,27 @@ class SwitchQueue(object):
         LOG.debug("fetched and deleted result for: %s", result_key)
         return result_dict
 
-    def _get_raw_batches(self):
+    def _get_raw_batches(self, max_create_revision=None):
         input_prefix = self.INPUT_PREFIX % self.switch_name
         # Sort order ensures FIFO style queue
-        raw_batches = self.client.get_prefix(input_prefix,
-                                             sort_order="ascend",
-                                             sort_target="create")
+        # Use get rather than get_prefix since get accepts max_create_revision.
+        range_end = _encode(_increment_last_byte(input_prefix))
+        raw_batches = self.client.get(input_prefix,
+                                      metadata=True,
+                                      range_end=range_end,
+                                      sort_order="ascend",
+                                      sort_target="create",
+                                      max_create_revision=max_create_revision)
         return raw_batches
 
-    def get_batches(self):
+    def get_batches(self, max_create_revision=None):
         """Return a list of the event dicts written in wait for result.
 
         This is called both with or without getting a lock to get the
         latest list of work that has send to the per switch queue in
         etcd.
         """
-        raw_batches = self._get_raw_batches()
+        raw_batches = self._get_raw_batches(max_create_revision)
         LOG.debug("found %s batches", len(raw_batches))
 
         batches = []
@@ -228,7 +258,7 @@ class SwitchQueue(object):
             LOG.debug("written result key: %s", batch['result_key'])
 
     def acquire_worker_lock(self, acquire_timeout=300, lock_ttl=120,
-                            wait=None):
+                            wait=None, max_create_revision=None):
         """Wait for lock needed to call record_result.
 
         This blocks until the work queue is empty of the switch lock is
@@ -256,7 +286,7 @@ class SwitchQueue(object):
                 return lock
 
             # Stop waiting for the lock if there is nothing to do
-            work = self._get_raw_batches()
+            work = self._get_raw_batches(max_create_revision)
             if not work:
                 return None
 
@@ -296,11 +326,12 @@ class SwitchBatch(object):
 
         # request that the cmd_set by executed
         cmd_list = list(cmd_set)
-        wait_for_result = self.queue.add_batch_and_wait_for_result(cmd_list)
+        wait_for_result, create_revision = \
+            self.queue.add_batch_and_wait_for_result(cmd_list)
 
         def do_work():
             try:
-                self._execute_pending_batches(device)
+                self._execute_pending_batches(device, create_revision)
             except Exception as e:
                 LOG.error("failed to run execute batch: %s", e,
                           exec_info=True)
@@ -324,20 +355,24 @@ class SwitchBatch(object):
         # if pending tasks already ran
         THREAD_POOL.spawn_n(work_fn)
 
-    def _execute_pending_batches(self, device):
+    def _execute_pending_batches(self, device, max_create_revision):
         """Execute all batches currently registered.
 
         Typically called by every caller of add_batch.
         Could be a noop if all batches are already executed.
         """
-        batches = self.queue.get_batches()
+        batches = self.queue.get_batches(max_create_revision)
         if not batches:
             LOG.debug("Skipped execution for %s", self.switch_name)
             return
         LOG.debug("Found %d batches - trying to acquire lock for %s",
                   len(batches), self.switch_name)
 
-        lock = self.queue.acquire_worker_lock()
+        # Many workers can end up piling up here trying to acquire the
+        # lock. Only consider batches at least as old as the one that triggered
+        # this worker, to ensure they don't wait forever.
+        lock = self.queue.acquire_worker_lock(
+            max_create_revision=max_create_revision)
         if lock is None:
             # This means we stopped waiting as the work queue was empty
             LOG.debug("Work list empty for %s", self.switch_name)
