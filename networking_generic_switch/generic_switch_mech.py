@@ -453,6 +453,7 @@ class GenericSwitchDriver(api.MechanismDriver):
             if not self._is_link_valid(port, network):
                 return
             else:
+                is_802_3ad = self._is_802_3ad(port)
                 for link in local_link_information:
                     port_id = link.get('port_id')
                     switch_info = link.get('switch_info')
@@ -476,9 +477,10 @@ class GenericSwitchDriver(api.MechanismDriver):
                             vtr = self._is_vlan_translation_required(trunk_details)
                             switch.plug_port_to_network_trunk(
                                 port_id, segmentation_id, trunk_details, vtr)
+                        elif is_802_3ad and hasattr(switch, 'plug_bond_to_network'):
+                            switch.plug_bond_to_network(port_id, segmentation_id)
                         else:
-                            switch.plug_port_to_network(
-                                port_id, segmentation_id)
+                            switch.plug_port_to_network(port_id, segmentation_id)
                     except ngs_exc.GenericSwitchNotSupported as e:
                         LOG.warning("Operation is not supported by "
                                         "networking-generic-switch. %(err)s)",
@@ -575,6 +577,21 @@ class GenericSwitchDriver(api.MechanismDriver):
         vif_type = port[portbindings.VIF_TYPE]
         return vif_type == portbindings.VIF_TYPE_OTHER
 
+    @staticmethod
+    def _is_802_3ad(port):
+        """Return whether a port is using 802.3ad link aggregation.
+
+        :param port: The port to check
+        :returns: Whether the port is a port group using 802.3ad link
+                  aggregation.
+        """
+        binding_profile = port['binding:profile']
+        local_group_information = binding_profile.get(
+            'local_group_information')
+        if not local_group_information:
+            return False
+        return local_group_information.get('bond_mode') in ['4', '802.3ad']
+
     def _unplug_port_from_network(self, port, network):
         """Unplug a port from a network.
 
@@ -589,6 +606,8 @@ class GenericSwitchDriver(api.MechanismDriver):
         local_link_information = binding_profile.get('local_link_information')
         if not local_link_information:
             return
+
+        is_802_3ad = self._is_802_3ad(port)
         for link in local_link_information:
             switch_info = link.get('switch_info')
             switch_id = link.get('switch_id')
@@ -605,7 +624,10 @@ class GenericSwitchDriver(api.MechanismDriver):
                       {'port': port_id, 'switch_info': switch_info,
                        'segmentation_id': segmentation_id})
             try:
-                switch.delete_port(port_id, segmentation_id)
+                if is_802_3ad and hasattr(switch, 'unplug_bond_from_network'):
+                    switch.unplug_bond_from_network(port_id, segmentation_id)
+                else:
+                    switch.delete_port(port_id, segmentation_id)
             except Exception as e:
                 LOG.error("Failed to unplug port %(port_id)s "
                           "on device: %(switch)s from network %(net_id)s "

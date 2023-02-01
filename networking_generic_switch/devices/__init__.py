@@ -42,7 +42,9 @@ NGS_INTERNAL_OPTS = [
     {'name': 'ngs_network_name_format', 'default': '{network_id}'},
     # If false, ngs will not add and delete VLANs from switches
     {'name': 'ngs_manage_vlans', 'default': True},
-    {'name': 'vlan_translation_supported', 'default': False}
+    {'name': 'vlan_translation_supported', 'default': False},
+    # EXPERIMENTAL: when true try to batch up in flight switch requests
+    {'name': 'ngs_batch_requests', 'default': False},
 ]
 
 
@@ -133,6 +135,11 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
         return network_name_format.format(network_id=network_id,
                                           segmentation_id=segmentation_id)
 
+    def _batch_requests(self):
+        """Return whether to batch up requests to the switch."""
+        return strutils.bool_from_string(
+            self.ngs_config['ngs_batch_requests'])
+
     def _do_vlan_management(self):
         """Check if drivers should add and remove VLANs from switches."""
         return strutils.bool_from_string(self.ngs_config['ngs_manage_vlans'])
@@ -155,3 +162,11 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def delete_port(self, port_id, segmentation_id):
         pass
+
+    def plug_bond_to_network(self, bond_id, segmentation_id):
+        # Fall back to interface method.
+        return self.plug_port_to_network(bond_id, segmentation_id)
+
+    def unplug_bond_from_network(self, bond_id, segmentation_id):
+        # Fall back to interface method.
+        return self.delete_port(bond_id, segmentation_id)

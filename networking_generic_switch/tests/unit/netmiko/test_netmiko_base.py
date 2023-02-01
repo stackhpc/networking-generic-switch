@@ -386,7 +386,6 @@ fake error message
                "fake op. Output: %s" % output)
         self.assertRaisesRegex(exc.GenericSwitchNetmikoConfigError, msg,
                                self.switch.check_output, output, 'fake op')
-
     @mock.patch.object(netmiko_devices.netmiko, 'ConnectHandler')
     @mock.patch.object(netmiko_devices.NetmikoSwitch,
                        'send_commands_to_device')
