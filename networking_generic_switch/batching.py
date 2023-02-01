@@ -138,6 +138,9 @@ class SwitchQueue(object):
                   input_key, create_revision)
         return get_result, create_revision
 
+    def _watcher(self, result_key, callback):
+        return watch.Watcher(self.client, result_key, callback)
+
     def _watch_for_result(self, result_key):
         # Logic based on implementation of client.watch_once()
         event_queue = queue.Queue()
@@ -145,7 +148,7 @@ class SwitchQueue(object):
         def callback(event):
             event_queue.put(event)
 
-        watcher = watch.Watcher(self.client, result_key, callback)
+        watcher = self._watcher(result_key, callback)
 
         def wait_for_key(timeout):
             try:
