@@ -119,8 +119,7 @@ class SwitchQueue(object):
                 }],
                 'failure': []
             }
-            if lease:
-                txn['success'][0]['request_put']['lease'] = lease.id
+            txn['success'][0]['request_put']['lease'] = lease.id
             result = self.client.transaction(txn)
         except Exception:
             # Be sure to free watcher resources
