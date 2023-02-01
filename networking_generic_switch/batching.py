@@ -394,13 +394,13 @@ class SwitchBatch(object):
                 return
 
             LOG.debug("Starting to execute %d batches", len(batches))
-            self._send_commands(device, batches)
+            self._send_commands(device, batches, lock)
         finally:
             lock.release()
 
         LOG.debug("end of lock for %s", self.switch_name)
 
-    def _send_commands(self, device, batches):
+    def _send_commands(self, device, batches, lock):
         with device._get_connection() as net_connect:
             for batch in batches:
                 try:
@@ -408,6 +408,13 @@ class SwitchBatch(object):
                     batch["result"] = output
                 except Exception as e:
                     batch["error"] = str(e)
+
+                # The switch configuration can take a long time, and may exceed
+                # the lock TTL. Periodically refresh our lease, and verify that
+                # we still own the lock before recording the results.
+                lock.refresh()
+                if not lock.is_acquired():
+                    raise Exception("Worker aborting - lock timed out")
 
                 # Tell request watchers the result and
                 # tell workers which batches have now been executed
