@@ -304,11 +304,16 @@ class SwitchBatch(object):
             parsed_url = netutils.urlsplit(etcd_url)
             host = parsed_url.hostname
             port = parsed_url.port
-            # TODO(johngarbutt): support certs
             protocol = 'https' if parsed_url.scheme.endswith(
                 'https') else 'http'
+            # Use the same parameter format as tooz etcd3gw driver.
+            params = parsed_url.params()
+            ca_cert = params.get('ca_cert')
+            cert_key = params.get('cert_key')
+            cert_cert = params.get('cert_cert')
             etcd_client = etcd3gw.client(
                 host=host, port=port, protocol=protocol,
+                ca_cert=ca_cert, cert_key=cert_key, cert_cert=cert_cert,
                 timeout=30)
             self.queue = SwitchQueue(switch_name, etcd_client)
         else:
