@@ -126,7 +126,11 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
         self.locker = None
         self.batch_cmds = None
-        if self._batch_requests() and CONF.ngs_coordination.backend_url:
+        if self._batch_requests():
+            if not CONF.ngs_coordination.backend_url:
+                raise Exception("ngs_batch_requests is true but "
+                                "[ngs_coordination]backend_url is not "
+                                "provided")
             # NOTE: we skip the lock if we are batching requests
             self.locker = None
             switch_name = self.lock_kwargs['locks_prefix']
