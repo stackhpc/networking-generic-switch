@@ -35,9 +35,7 @@ class SwitchQueueTest(fixtures.TestWithFixtures):
         self.queue = batching.SwitchQueue(self.switch_name, self.client)
 
     @mock.patch.object(uuidutils, "generate_uuid")
-    @mock.patch.object(batching.SwitchQueue, "_watch_for_result")
-    def test_add_batch_and_wait_for_result(self, mock_watch, mock_uuid):
-        mock_watch.return_value = ("watcher", "callback")
+    def test_add_batch(self, mock_uuid):
         mock_uuid.return_value = "uuid"
         self.client.transaction.return_value = {
             "succeeded": True,
@@ -50,12 +48,10 @@ class SwitchQueueTest(fixtures.TestWithFixtures):
             }]
         }
 
-        callback, revision = self.queue.add_batch_and_wait_for_result(
-            ["cmd1", "cmd2"])
+        uuid, revision = self.queue.add_batch(["cmd1", "cmd2"])
 
-        self.assertEqual("callback", callback)
+        self.assertEqual("uuid", uuid)
         self.assertEqual(42, revision)
-        mock_watch.assert_called_once_with('/ngs/batch/switch1/output/uuid')
         input_key = '/ngs/batch/switch1/input/uuid'
         expected_value = (
             b'{"cmds": ["cmd1", "cmd2"], '
@@ -81,54 +77,38 @@ class SwitchQueueTest(fixtures.TestWithFixtures):
         self.client.transaction.assert_called_once_with(expected_txn)
 
     @mock.patch.object(uuidutils, "generate_uuid")
-    @mock.patch.object(batching.SwitchQueue, "_watch_for_result")
-    def test_add_batch_and_wait_for_result_failure(self, mock_watch,
-                                                   mock_uuid):
+    def test_add_batch_failure(self, mock_uuid):
         watcher = mock.MagicMock()
-        mock_watch.return_value = (watcher, "callback")
         mock_uuid.return_value = "uuid"
         self.client.transaction.side_effect = Exception
 
-        self.assertRaises(Exception, self.queue.add_batch_and_wait_for_result,
-                          ["cmd1", "cmd2"])
-
-        watcher.stop.assert_called_once_with()
+        self.assertRaises(Exception, self.queue.add_batch, ["cmd1", "cmd2"])
 
     @mock.patch.object(uuidutils, "generate_uuid")
-    @mock.patch.object(batching.SwitchQueue, "_watch_for_result")
-    def test_add_batch_and_wait_for_result_failure2(self, mock_watch,
-                                                    mock_uuid):
+    def test_add_batch_failure2(self, mock_uuid):
         watcher = mock.MagicMock()
-        mock_watch.return_value = (watcher, "callback")
         mock_uuid.return_value = "uuid"
         self.client.transaction.return_value = {"succeeded": False}
 
-        self.assertRaises(Exception, self.queue.add_batch_and_wait_for_result,
-                          ["cmd1", "cmd2"])
+        self.assertRaises(Exception, self.queue.add_batch, ["cmd1", "cmd2"])
 
-        watcher.stop.assert_called_once_with()
-
-    @mock.patch.object(batching.SwitchQueue, "_watcher")
     @mock.patch.object(batching.SwitchQueue, "_get_and_delete_result")
-    def test_watch_for_result(self, mock_get, mock_watcher):
+    def test_wait_for_result(self, mock_get):
         event = {
             "kv": {
                 "version": 1
             }
         }
-
-        def watcher(result_key, callback):
-            callback(event)
-            return mock.MagicMock()
-
-        mock_watcher.side_effect = watcher
+        self.client.watch_once.return_value = event
         mock_get.return_value = {"result": "result1"}
 
-        watcher, wait_for_key = self.queue._watch_for_result("result_key")
+        result = self.queue.wait_for_result("uuid", 42, 43)
 
-        result = wait_for_key(0.1)
         self.assertEqual("result1", result)
-        watcher.stop.assert_called_once_with()
+        result_key = '/ngs/batch/switch1/output/uuid'
+        self.client.watch_once.assert_called_once_with(
+            result_key, timeout=43, start_revision=42)
+        mock_get.assert_called_once_with(result_key)
 
     def test_get_and_delete_result(self):
         self.client.transaction.return_value = {
@@ -295,16 +275,15 @@ class SwitchBatchTest(fixtures.TestWithFixtures):
 
     @mock.patch.object(batching.SwitchBatch, "_spawn")
     def test_do_batch(self, mock_spawn):
-        callback = mock.MagicMock()
-        callback.return_value = "output"
-        self.queue.add_batch_and_wait_for_result.return_value = (callback, 42)
+        self.queue.add_batch.return_value = ("uuid", 42)
+        self.queue.wait_for_result.return_value = "output"
+
         result = self.batch.do_batch("device", ["cmd1"])
 
         self.assertEqual("output", result)
         self.assertEqual(1, mock_spawn.call_count)
-        self.queue.add_batch_and_wait_for_result.assert_called_once_with(
-            ["cmd1"])
-        callback.assert_called_once_with(timeout=300)
+        self.queue.add_batch.assert_called_once_with(["cmd1"])
+        self.queue.wait_for_result.assert_called_once_with("uuid", 42, 300)
 
     def test_execute_pending_batches_skip(self):
         self.queue.get_batches.return_value = []
