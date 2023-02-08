@@ -18,7 +18,6 @@ from neutron.db import provisioning_blocks
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources
 from neutron_lib.plugins.ml2 import api
-from neutron_lib.plugins import directory
 from oslo_log import log as logging
 
 from networking_generic_switch import config as gsw_conf
@@ -479,25 +478,26 @@ class GenericSwitchDriver(api.MechanismDriver):
                         vtr = self._is_vlan_translation_required(trunk_details)
                         switch.plug_port_to_network_trunk(
                             port_id, segmentation_id, trunk_details, vtr)
-                    elif is_802_3ad and hasattr(switch, 'plug_bond_to_network'):
+                    elif (is_802_3ad
+                          and hasattr(switch, 'plug_bond_to_network')):
                         switch.plug_bond_to_network(port_id, segmentation_id)
                     else:
                         switch.plug_port_to_network(
                             port_id, segmentation_id)
                 except ngs_exc.GenericSwitchNotSupported as e:
                     LOG.warning("Operation is not supported by "
-                                    "networking-generic-switch. %(err)s)",
+                                "networking-generic-switch. %(err)s)",
                                 {'err': e})
                     raise e
                 except Exception as e:
-                        LOG.error("Failed to bind port %(port_id)s in "
-                                      "segment %(segment_id)s on device "
-                                      "%(device)s due to error %(err)s",
-                                  {'port_id': port['id'],
-                                   'device': switch_info,
-                                   'segment_id': segmentation_id,
-                                   'err': e})
-                        raise e
+                    LOG.error("Failed to bind port %(port_id)s in "
+                              "segment %(segment_id)s on device "
+                              "%(device)s due to error %(err)s",
+                              {'port_id': port['id'],
+                               'device': switch_info,
+                               'segment_id': segmentation_id,
+                               'err': e})
+                    raise e
                 # END
                 LOG.info("Successfully bound port %(port_id)s in segment "
                          "%(segment_id)s on device %(device)s",

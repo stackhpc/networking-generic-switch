@@ -28,7 +28,6 @@ class TestNetmikoDellOS10(test_netmiko_base.NetmikoSwitchTestBase):
         device_cfg.update(extra_cfg)
         return dell.DellOS10(device_cfg)
 
-
     def test_get_trunk_port_cmds_no_vlan_translation(self):
         mock_context = mock.create_autospec(driver_context.PortContext)
         self.switch.ngs_config['vlan_translation_supported'] = True
