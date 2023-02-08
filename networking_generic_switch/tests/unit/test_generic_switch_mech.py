@@ -19,7 +19,6 @@ from unittest import mock
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2 import driver_context
 from neutron_lib.callbacks import resources
-from neutron_lib.plugins import directory
 
 from networking_generic_switch import exceptions
 from networking_generic_switch import generic_switch_mech as gsm
@@ -835,7 +834,6 @@ class TestGenericSwitchDriver(unittest.TestCase):
                                       mock_context.current['id'],
                                       resources.PORT,
                                       'GENERICSWITCH')
-
 
     @mock.patch.object(provisioning_blocks, 'add_provisioning_component')
     def test_bind_portgroup(self, m_apc, m_list):
