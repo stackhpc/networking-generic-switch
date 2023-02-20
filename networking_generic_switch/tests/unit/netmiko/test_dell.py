@@ -285,6 +285,43 @@ class TestNetmikoDellOS10(test_netmiko_base.NetmikoSwitchTestBase):
                           'no switchport trunk allowed vlan 33',
                           'exit'])
 
+    def test_get_trunk_port_cmds_no_vlan_translation(self):
+        mock_context = mock.create_autospec(driver_context.PortContext)
+        self.switch.ngs_config['vlan_translation_supported'] = True
+        trunk_details = {'trunk_id': 'aaa-bbb-ccc-ddd',
+                         'sub_ports': [{'segmentation_id': 130,
+                                        'port_id': 'aaa-bbb-ccc-ddd',
+                                        'segmentation_type': 'vlan',
+                                        'mac_address': u'fa:16:3e:1c:c2:7e'}]}
+        mock_context.current = {'binding:profile':
+                                {'local_link_information':
+                                    [
+                                        {
+                                            'switch_info': 'foo',
+                                            'port_id': '2222'
+                                        }
+                                    ]
+                                 },
+                                'binding:vnic_type': 'baremetal',
+                                'id': 'aaaa-bbbb-cccc',
+                                'trunk_details': trunk_details}
+        mock_context.network = mock.Mock()
+        mock_context.network.current = {'provider:segmentation_id': 123}
+        mock_context.segments_to_bind = [
+            {
+                'segmentation_id': 777,
+                'id': 123
+            }
+        ]
+        res = self.switch.get_trunk_port_cmds_no_vlan_translation(
+            '2222', 777, trunk_details)
+        self.assertEqual(['interface 2222', 'switchport mode access',
+                          'switchport mode trunk',
+                          'switchport access vlan 777',
+                          'interface 2222',
+                          'switchport trunk allowed vlan 130'],
+                         res)
+
 
 class TestNetmikoDellPowerConnect(test_netmiko_base.NetmikoSwitchTestBase):
 
