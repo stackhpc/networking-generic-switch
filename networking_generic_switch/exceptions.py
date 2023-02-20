@@ -49,3 +49,8 @@ class GenericSwitchNetmikoConnectError(GenericSwitchException):
 
 class GenericSwitchNetmikoConfigError(GenericSwitchException):
     message = _("Netmiko configuration error: %(config)s, error: %(error)s")
+
+
+class GenericSwitchNotSupported(GenericSwitchException):
+    message = _("Requested feature is not supported by "
+                "networking-generic-switch. %(error)s")
