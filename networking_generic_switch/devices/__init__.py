@@ -42,6 +42,7 @@ NGS_INTERNAL_OPTS = [
     {'name': 'ngs_network_name_format', 'default': '{network_id}'},
     # If false, ngs will not add and delete VLANs from switches
     {'name': 'ngs_manage_vlans', 'default': True},
+    {'name': 'vlan_translation_supported', 'default': False}
 ]
 
 
@@ -142,6 +143,10 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def del_network(self, segmentation_id, network_id):
+        pass
+
+    def plug_port_to_network_trunk(self, port_id, segmentation_id,
+                                   trunk_details=None, vtr=False):
         pass
 
     @abc.abstractmethod
