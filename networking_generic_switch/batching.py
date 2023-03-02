@@ -322,7 +322,7 @@ class SwitchBatch(object):
             cert_key = params.get('cert_key')
             cert_cert = params.get('cert_cert')
             api_version = params.get('api_version', 'v3alpha')
-            etcd_client = etcd3gw.client(
+            etcd_client = etcd3gw.Etcd3Client(
                 host=host, port=port, protocol=protocol,
                 ca_cert=ca_cert, cert_key=cert_key, cert_cert=cert_cert,
                 api_path='/' + api_version + '/',
