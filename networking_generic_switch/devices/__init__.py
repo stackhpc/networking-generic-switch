@@ -42,7 +42,7 @@ NGS_INTERNAL_OPTS = [
     {'name': 'ngs_network_name_format', 'default': '{network_id}'},
     # If false, ngs will not add and delete VLANs from switches
     {'name': 'ngs_manage_vlans', 'default': True},
-    {'name': 'vlan_translation_supported', 'default': False}
+    {'name': 'vlan_translation_supported', 'default': False},
     # If False, ngs will skip saving configuration on devices
     {'name': 'ngs_save_configuration', 'default': True},
     # When true try to batch up in flight switch requests
