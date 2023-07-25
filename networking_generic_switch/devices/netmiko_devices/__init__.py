@@ -24,6 +24,7 @@ import paramiko
 import tenacity
 from tooz import coordination
 
+from networking_generic_switch import batching
 from networking_generic_switch import devices
 from networking_generic_switch.devices import utils as device_utils
 from networking_generic_switch import exceptions as exc
@@ -89,6 +90,10 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     SAVE_CONFIGURATION = None
 
+    SET_NATIVE_VLAN = None
+
+    ALLOW_NETWORK_ON_TRUNK = None
+
     ERROR_MSG_PATTERNS = ()
     """Sequence of error message patterns.
 
@@ -113,19 +118,31 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             self.config['session_log_record_writes'] = True
             self.config['session_log_file_mode'] = 'append'
 
-        self.locker = None
-        if CONF.ngs_coordination.backend_url:
-            self.locker = coordination.get_coordinator(
-                CONF.ngs_coordination.backend_url,
-                ('ngs-' + device_utils.get_hostname()).encode('ascii'))
-            self.locker.start()
-            atexit.register(self.locker.stop)
-
         self.lock_kwargs = {
             'locks_pool_size': int(self.ngs_config['ngs_max_connections']),
             'locks_prefix': self.config.get(
                 'host', '') or self.config.get('ip', ''),
             'timeout': CONF.ngs_coordination.acquire_timeout}
+
+        self.locker = None
+        self.batch_cmds = None
+        if self._batch_requests():
+            if not CONF.ngs_coordination.backend_url:
+                raise exc.GenericSwitchNetmikoConfigError(
+                    config=device_utils.sanitise_config(self.config),
+                    error="ngs_batch_requests is true but [ngs_coordination] "
+                          "backend_url is not provided")
+            # NOTE: we skip the lock if we are batching requests
+            self.locker = None
+            switch_name = self.lock_kwargs['locks_prefix']
+            self.batch_cmds = batching.SwitchBatch(
+                switch_name, CONF.ngs_coordination.backend_url)
+        elif CONF.ngs_coordination.backend_url:
+            self.locker = coordination.get_coordinator(
+                CONF.ngs_coordination.backend_url,
+                ('ngs-' + device_utils.get_hostname()).encode('ascii'))
+            self.locker.start()
+            atexit.register(self.locker.stop)
 
     def _format_commands(self, commands, **kwargs):
         if not commands:
@@ -188,6 +205,12 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             LOG.debug("Nothing to execute")
             return
 
+        # If configured, batch up requests to the switch
+        if self.batch_cmds is not None:
+            return self.batch_cmds.do_batch(self, cmd_set)
+        return self._send_commands_to_device(cmd_set)
+
+    def _send_commands_to_device(self, cmd_set):
         try:
             with ngs_lock.PoolLock(self.locker, **self.lock_kwargs):
                 with self._get_connection() as net_connect:
@@ -250,6 +273,28 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                                       network_id=network_id,
                                       network_name=network_name)
         return self.send_commands_to_device(cmds)
+
+    @check_output('plug port trunk')
+    def plug_port_to_network_trunk(self, port, segmentation_id,
+                                   trunk_details=None, vtr=False):
+        cmd_set = []
+        vts = self.ngs_config.get('vlan_translation_supported', False)
+        # NOTE(vsaienko) Always use vlan translation if it is supported.
+        if vts:
+            cmd_set.extend(self.get_trunk_port_cmds_vlan_translation(
+                port, segmentation_id, trunk_details))
+        else:
+            if vtr:
+                msg = ("Cannot bind_port VLAN aware port as switch %s "
+                       "doesn't support VLAN translation. "
+                       "But it is required.") % self.config['ip']
+                raise exc.GenericSwitchNotSupported(error=msg)
+            else:
+                cmd_set.extend(
+                    self.get_trunk_port_cmds_no_vlan_translation(
+                        port, segmentation_id, trunk_details))
+
+        self.send_commands_to_device(cmd_set)
 
     @check_output('plug port')
     def plug_port_to_network(self, port, segmentation_id):
@@ -384,3 +429,22 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 raise exc.GenericSwitchNetmikoConfigError(
                     config=device_utils.sanitise_config(self.config),
                     error=msg)
+
+    def get_trunk_port_cmds_no_vlan_translation(self, port_id,
+                                                segmentation_id,
+                                                trunk_details):
+        cmd_set = []
+        cmd_set.extend(
+            self._format_commands(self.SET_NATIVE_VLAN,
+                                  port=port_id,
+                                  segmentation_id=segmentation_id))
+        for sub_port in trunk_details.get('sub_ports'):
+            cmd_set.extend(
+                self._format_commands(
+                    self.ALLOW_NETWORK_ON_TRUNK, port=port_id,
+                    segmentation_id=sub_port['segmentation_id']))
+        return cmd_set
+
+    def get_trunk_port_cmds_vlan_translation(self, port_id, segmentation_id,
+                                             trunk_details):
+        pass
