@@ -51,13 +51,13 @@ class AristaEos(netmiko_devices.NetmikoSwitch):
     )
 
     PLUG_BOND_TO_NETWORK = (
-        'interface {port}',
+        'interface {bond}',
         'switchport mode access',
         'switchport access vlan {segmentation_id}',
     )
 
     UNPLUG_BOND_FROM_NETWORK = (
-        'interface {port}',
+        'interface {bond}',
         'no switchport access vlan {segmentation_id}',
         'no switchport mode trunk',
         'switchport trunk allowed vlan none',
