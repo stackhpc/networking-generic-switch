@@ -169,6 +169,43 @@ for a Cumulus Linux device::
     secret = secret
     ngs_mac_address = <switch mac address>
 
+for a Cumulus NVUE Linux device::
+
+    [genericswitch:hostname-for-cumulus]
+    device_type = netmiko_cumulus_nvue
+    ip = <switch mgmt_ip address>
+    username = admin
+    password = password
+    secret = secret
+    ngs_mac_address = <switch mac address>
+
+for the Nokia SRL series device::
+
+    [genericswitch:sw-hostname]
+    device_type = netmiko_nokia_srl
+    username = admin
+    password = password
+    ip = <switch mgmt ip address>
+
+for a Pluribus switch::
+
+    [genericswitch:sw-hostname]
+    device_type = netmiko_pluribus
+    username = admin
+    password = password
+    ip = <switch mgmt ip address>
+
+for an ArubaOS-CX switch::
+
+    [genericswitch:aruba-hostname]
+    device_type = netmiko_aruba_os
+    username = admin
+    password = password
+    ip = <switch mgmt ip address>
+
+General configuration
+=====================
+
 Additionally the ``GenericSwitch`` mechanism driver needs to be enabled from
 the ml2 config file ``/etc/neutron/plugins/ml2/ml2_conf.ini``::
 
