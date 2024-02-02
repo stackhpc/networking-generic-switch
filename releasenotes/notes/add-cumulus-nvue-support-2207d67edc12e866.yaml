@@ -1,0 +1,5 @@
+---
+features:
+  - |
+    Adds a new device driver, ``netmiko_cumulus_nvue``, for managing cumulus
+    based switch devices via NVUE.

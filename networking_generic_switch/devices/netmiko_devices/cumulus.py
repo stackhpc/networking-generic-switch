@@ -87,3 +87,94 @@ class Cumulus(netmiko_devices.NetmikoSwitch):
         re.compile(r'command not found'),
         re.compile(r'is not a physical interface on this switch'),
     ]
+
+
+class CumulusNVUE(netmiko_devices.NetmikoSwitch):
+    """Built for Cumulus 5.x
+
+    Note for this switch you want config like this,
+    where secret is the password needed for sudo su:
+
+    [genericswitch:<hostname>]
+    device_type = netmiko_cumulus
+    ip = <ip>
+    username = <username>
+    password = <password>
+    secret = <password for sudo>
+    ngs_physical_networks = physnet1
+    ngs_max_connections = 1
+    ngs_port_default_vlan = 123
+    ngs_disable_inactive_ports = False
+    """
+    NETMIKO_DEVICE_TYPE = "linux"
+
+    ADD_NETWORK = [
+        'nv set bridge domain br_default vlan {segmentation_id}',
+    ]
+
+    DELETE_NETWORK = [
+        'nv unset bridge domain br_default vlan {segmentation_id}',
+    ]
+
+    PLUG_PORT_TO_NETWORK = [
+        'nv set interface {port} bridge domain br_default access '
+        '{segmentation_id}',
+    ]
+
+    DELETE_PORT = [
+        'nv unset interface {port} bridge domain br_default access '
+        '{segmentation_id}',
+    ]
+
+    PLUG_BOND_TO_NETWORK = [
+        'nv set interface bond {bond} bridge domain br_default access '
+        '{segmentation_id}',
+    ]
+
+    UNPLUG_BOND_FROM_NETWORK = [
+        'nv unset interface bond {bond} bridge domain br_default access '
+        '{segmentation_id}',
+    ]
+
+    ENABLE_PORT = [
+        'nv set interface {port} link state up',
+    ]
+
+    DISABLE_PORT = [
+        'nv set interface {port} link state down',
+    ]
+
+    ENABLE_BOND = [
+        'nv set interface bond {bond} link state up',
+    ]
+
+    DISABLE_BOND = [
+        'nv set interface bond {bond} link state down',
+    ]
+
+    SAVE_CONFIGURATION = [
+        'nv config save',
+    ]
+
+    ERROR_MSG_PATTERNS = [
+        # Its tempting to add this error message, but as only one
+        # bridge-access is allowed, we ignore that error for now:
+        # re.compile(r'configuration does not have "bridge-access')
+        re.compile(r'Invalid config'),
+        re.compile(r'Config invalid at'),
+        re.compile(r'ERROR: Command not found.'),
+        re.compile(r'command not found'),
+        re.compile(r'is not a physical interface on this switch'),
+    ]
+
+    def send_config_set(self, net_connect, cmd_set):
+        """Send a set of configuration lines to the device.
+
+        :param net_connect: a netmiko connection object.
+        :param cmd_set: a list of configuration lines to send.
+        :returns: The output of the configuration commands.
+        """
+        cmd_set.append('nv config apply')
+        net_connect.enable()
+        return net_connect.send_config_set(config_commands=cmd_set,
+                                           cmd_verify=False)
