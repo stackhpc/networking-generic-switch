@@ -18,6 +18,7 @@ from neutron.db import provisioning_blocks
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources
 from neutron_lib import constants as const
+from neutron_lib.plugins import directory
 from neutron_lib.plugins.ml2 import api
 from oslo_log import log as logging
 
@@ -25,6 +26,8 @@ from networking_generic_switch import config as gsw_conf
 from networking_generic_switch import devices
 from networking_generic_switch.devices import utils as device_utils
 from networking_generic_switch import exceptions as ngs_exc
+from networking_generic_switch import trunk_driver
+from networking_generic_switch import utils as ngs_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -53,6 +56,8 @@ class GenericSwitchDriver(api.MechanismDriver):
         LOG.info('Devices %s have been loaded', self.switches.keys())
         if not self.switches:
             LOG.error('No devices have been loaded')
+
+        self.trunk_driver = trunk_driver.GenericSwitchTrunkDriver.create(self)
 
     def create_network_precommit(self, context):
         """Allocate resources for a new network.
@@ -361,7 +366,7 @@ class GenericSwitchDriver(api.MechanismDriver):
             # at this point, but check just in case.
             if not self._is_link_valid(port, network):
                 return
-            is_802_3ad = self._is_802_3ad(port)
+            is_802_3ad = ngs_utils.is_802_3ad(binding_profile)
             for link in local_link_information:
                 port_id = link.get('port_id')
                 switch_info = link.get('switch_info')
@@ -377,31 +382,27 @@ class GenericSwitchDriver(api.MechanismDriver):
                           "%(switch_info)s in vlan %(segmentation_id)s",
                           {'switch_port': port_id, 'switch_info': switch_info,
                            'segmentation_id': segmentation_id})
+                trunk_details = port.get('trunk_details', {})
+                plug_kwargs = {}
+                if trunk_details:
+                    plug_kwargs["trunk_details"] = trunk_details
                 # Move port to network
-                try:
-                    if trunk_details:
-                        vtr = self._is_vlan_translation_required(trunk_details)
-                        switch.plug_port_to_network_trunk(
-                            port_id, segmentation_id, trunk_details, vtr)
-                    elif (is_802_3ad
-                            and hasattr(switch, 'plug_bond_to_network')):
-                        switch.plug_bond_to_network(port_id, segmentation_id)
-                    else:
-                        switch.plug_port_to_network(port_id, segmentation_id)
-                except ngs_exc.GenericSwitchNotSupported as e:
-                    LOG.warning("Operation is not supported by "
-                                "networking-generic-switch. %(err)s)",
-                                {'err': e})
-                    raise e
-                except Exception as e:
-                    LOG.error("Failed to plug port %(port_id)s in "
-                              "segment %(segment_id)s on device "
-                              "%(device)s due to error %(err)s",
-                              {'port_id': port['id'],
-                               'device': switch_info,
-                               'segment_id': segmentation_id,
-                               'err': e})
-                    raise e
+                if is_802_3ad:
+                    if (trunk_details and not
+                            switch.support_trunk_on_bond_ports):
+                        raise ngs_exc.GenericSwitchNotSupported(
+                            "Trunks are not supported by "
+                            "networking-generic-switch %s.",
+                            switch.device_name)
+                    switch.plug_bond_to_network(port_id, segmentation_id,
+                                                **plug_kwargs)
+                else:
+                    if trunk_details and not switch.support_trunk_on_ports:
+                        raise ngs_exc.GenericSwitchNotSupported(
+                            feature="trunks",
+                            switch=switch.device_name)
+                    switch.plug_port_to_network(port_id, segmentation_id,
+                                                **plug_kwargs)
                 LOG.info("Successfully plugged port %(port_id)s in segment "
                          "%(segment_id)s on device %(device)s",
                          {'port_id': port['id'], 'device': switch_info,
@@ -410,6 +411,13 @@ class GenericSwitchDriver(api.MechanismDriver):
             provisioning_blocks.provisioning_complete(
                 context._plugin_context, port['id'], resources.PORT,
                 GENERIC_SWITCH_ENTITY)
+            for subport in port.get('trunk_details', {}).get("sub_ports", []):
+                subport_obj = context._plugin.get_port(context.plugin_context,
+                                                       subport['port_id'])
+                if subport_obj['status'] != const.PORT_STATUS_ACTIVE:
+                    context._plugin.update_port_status(
+                        context.plugin_context, subport["port_id"],
+                        const.PORT_STATUS_ACTIVE)
         elif self._is_port_bound(context.original):
             # The port has been unbound. This will cause the local link
             # information to be lost, so remove the port from the network on
@@ -584,6 +592,7 @@ class GenericSwitchDriver(api.MechanismDriver):
         vif_type = port[portbindings.VIF_TYPE]
         return vif_type == portbindings.VIF_TYPE_OTHER
 
+<<<<<<< HEAD
     @staticmethod
     def _is_802_3ad(port):
         """Return whether a port is using 802.3ad link aggregation.
@@ -601,6 +610,10 @@ class GenericSwitchDriver(api.MechanismDriver):
 
     def _unplug_port_from_network(self, port, network):
         """Unplug a port from a network.
+=======
+    def _unplug_port_from_segment(self, port, segment):
+        """Unplug a port from a segment.
+>>>>>>> ff0085a (Add vlan aware VMs support)
 
         If the configuration required to unplug the port is not present
         (e.g. local link information), the port will not be unplugged and no
@@ -614,7 +627,7 @@ class GenericSwitchDriver(api.MechanismDriver):
         if not local_link_information:
             return
 
-        is_802_3ad = self._is_802_3ad(port)
+        is_802_3ad = ngs_utils.is_802_3ad(binding_profile)
         for link in local_link_information:
             switch_info = link.get('switch_info')
             switch_id = link.get('switch_id')
@@ -660,3 +673,82 @@ class GenericSwitchDriver(api.MechanismDriver):
             # follow the old behaviour of mapping all networks to it.
             if not physnets or physnet in physnets:
                 yield switch_name, switch
+
+    def subports_added(self, context, port, subports):
+        """Tell the agent about new subports to add.
+
+        :param context: Request context
+        :param port: Port dictionary
+        :subports: List with subports
+        """
+
+        # set the correct state on port in the case where it has subports.
+        # If the parent port has been deleted then that delete will handle
+        # removing the trunked vlans on the switch using the mac
+        if not port:
+            LOG.debug('Discarding attempt to ensure subports on a port'
+                      'that has been deleted')
+            return
+
+        if not self._is_port_supported(port):
+            return
+
+        binding_profile = port['binding:profile']
+        local_link_information = binding_profile.get('local_link_information')
+
+        if not local_link_information:
+            return
+
+        for link in local_link_information:
+            port_id = link.get('port_id')
+            switch_info = link.get('switch_info')
+            switch_id = link.get('switch_id')
+            switch = device_utils.get_switch_device(
+                self.switches, switch_info=switch_info,
+                ngs_mac_address=switch_id)
+
+            switch.add_subports_on_trunk(
+                binding_profile, port_id, subports)
+
+        core_plugin = directory.get_plugin()
+
+        for subport in subports:
+            subport_obj = core_plugin.get_port(context,
+                                               subport['port_id'])
+            if subport_obj['status'] != const.PORT_STATUS_ACTIVE:
+                core_plugin.update_port_status(
+                    context, subport["port_id"],
+                    const.PORT_STATUS_ACTIVE)
+
+    def subports_deleted(self, context, port, subports):
+        """Tell the agent about subports to delete.
+
+        :param context: Request context
+        :param port: Port dictionary
+        :subports: List with subports
+        """
+
+        if not port:
+            LOG.debug('Discarding attempt to ensure subports on a port'
+                      'that has been deleted')
+            return
+
+        if not self._is_port_supported(port):
+            return
+
+        binding_profile = port['binding:profile']
+        local_link_information = binding_profile.get('local_link_information')
+
+        if not local_link_information:
+            return
+
+        for link in local_link_information:
+            port_id = link.get('port_id')
+            switch_info = link.get('switch_info')
+            switch_id = link.get('switch_id')
+            switch = device_utils.get_switch_device(
+                self.switches, switch_info=switch_info,
+                ngs_mac_address=switch_id)
+
+            switch.del_subports_on_trunk(
+                binding_profile, port_id, subports)

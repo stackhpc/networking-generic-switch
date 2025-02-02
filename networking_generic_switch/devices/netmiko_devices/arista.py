@@ -45,7 +45,18 @@ class AristaEos(netmiko_devices.NetmikoSwitch):
         'switchport trunk allowed vlan add {segmentation_id}'
     )
 
-    ALLOW_NETWORK_ON_TRUNK = (
+    DELETE_NATIVE_VLAN = (
+        'interface {port}',
+        'no switchport trunk native vlan {segmentation_id}',
+        'switchport trunk allowed vlan remove {segmentation_id}',
+    )
+
+    ADD_NETWORK_TO_TRUNK = (
         'interface {port}',
         'switchport trunk allowed vlan add {segmentation_id}'
+    )
+
+    REMOVE_NETWORK_FROM_TRUNK = (
+        'interface {port}',
+        'switchport trunk allowed vlan remove {segmentation_id}'
     )
