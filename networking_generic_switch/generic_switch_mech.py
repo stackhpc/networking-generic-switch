@@ -24,6 +24,7 @@ from oslo_log import log as logging
 from networking_generic_switch import config as gsw_conf
 from networking_generic_switch import devices
 from networking_generic_switch.devices import utils as device_utils
+from networking_generic_switch import exceptions as ngs_exc
 
 LOG = logging.getLogger(__name__)
 
@@ -371,15 +372,35 @@ class GenericSwitchDriver(api.MechanismDriver):
 
                 # If segmentation ID is None, set vlan 1
                 segmentation_id = segment.get(api.SEGMENTATION_ID) or 1
+                trunk_details = port.get('trunk_details', {})
                 LOG.debug("Putting switch port %(switch_port)s on "
                           "%(switch_info)s in vlan %(segmentation_id)s",
                           {'switch_port': port_id, 'switch_info': switch_info,
                            'segmentation_id': segmentation_id})
                 # Move port to network
-                if is_802_3ad:
-                    switch.plug_bond_to_network(port_id, segmentation_id)
-                else:
-                    switch.plug_port_to_network(port_id, segmentation_id)
+                try:
+                    if trunk_details:
+                        vtr = self._is_vlan_translation_required(trunk_details)
+                        switch.plug_port_to_network_trunk(
+                            port_id, segmentation_id, trunk_details, vtr)
+                    elif is_802_3ad:
+                        switch.plug_bond_to_network(port_id, segmentation_id)
+                    else:
+                        switch.plug_port_to_network(port_id, segmentation_id)
+                except ngs_exc.GenericSwitchNotSupported as e:
+                    LOG.warning("Operation is not supported by "
+                                "networking-generic-switch. %(err)s)",
+                                {'err': e})
+                    raise e
+                except Exception as e:
+                    LOG.error("Failed to plug port %(port_id)s in "
+                              "segment %(segment_id)s on device "
+                              "%(device)s due to error %(err)s",
+                              {'port_id': port['id'],
+                               'device': switch_info,
+                               'segment_id': segmentation_id,
+                               'err': e})
+                    raise e
                 LOG.info("Successfully plugged port %(port_id)s in segment "
                          "%(segment_id)s on device %(device)s",
                          {'port_id': port['id'], 'device': switch_info,
@@ -423,6 +444,14 @@ class GenericSwitchDriver(api.MechanismDriver):
         port = context.current
         if self._is_port_bound(port):
             self._unplug_port_from_segment(port, context.top_bound_segment)
+
+    def _is_vlan_translation_required(self, trunk_details):
+        """Check if vlan translation is required to configure specific trunk.
+
+        :returns: True if vlan translation is required, False otherwise.
+        """
+        # FIXME: removed for simplicity
+        return False
 
     def bind_port(self, context):
         """Attempt to bind a port.
