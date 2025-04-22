@@ -18,7 +18,6 @@ from unittest import mock
 import fixtures
 import netmiko
 import netmiko.base_connection
-from neutron.plugins.ml2 import driver_context
 from oslo_config import fixture as config_fixture
 import paramiko
 import tenacity
@@ -449,98 +448,3 @@ fake error message
                "fake op. Output: %s" % output)
         self.assertRaisesRegex(exc.GenericSwitchNetmikoConfigError, msg,
                                self.switch.check_output, output, 'fake op')
-
-    @mock.patch.object(netmiko_devices.netmiko, 'ConnectHandler',
-                       autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'send_commands_to_device', autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'get_trunk_port_cmds_no_vlan_translation',
-                       autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'get_trunk_port_cmds_vlan_translation',
-                       autospec=True)
-    def test_plug_port_trunk_no_vts(self, t_mock, nt_mock, sctd_mock,
-                                    nm_mock):
-        mock_context = mock.create_autospec(driver_context.PortContext)
-        connect_mock = mock.Mock()
-        nm_mock.return_value = connect_mock
-        self.switch.ngs_config['vlan_translation_supported'] = False
-        mock_context.current = {'binding:profile':
-                                {'local_link_information':
-                                    [
-                                        {
-                                            'switch_info': 'foo',
-                                            'port_id': '2222'
-                                        }
-                                    ]
-                                 },
-                                'binding:vnic_type': 'baremetal',
-                                'id': 'aaaa-bbbb-cccc',
-                                'trunk_details': {'sub_ports':
-                                                  [{'segmentation_id': 123}]}}
-        trunk_details = {'sub_ports': [{'segmentation_id': 123}]}
-        self.switch.plug_port_to_network_trunk('2222', None, trunk_details,
-                                               vtr=False)
-        nt_mock.assert_called_once_with(
-            self.switch, '2222', None,
-            {'sub_ports': [{'segmentation_id': 123}]})
-        self.assertFalse(t_mock.called)
-
-    @mock.patch.object(netmiko_devices.netmiko, 'ConnectHandler',
-                       autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'send_commands_to_device', autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'get_trunk_port_cmds_no_vlan_translation',
-                       autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'get_trunk_port_cmds_vlan_translation',
-                       autospec=True)
-    def test_plug_port_trunk_vts(self, t_mock, nt_mock, sctd_mock,
-                                 nm_mock):
-        mock_context = mock.create_autospec(driver_context.PortContext)
-        connect_mock = mock.Mock()
-        nm_mock.return_value = connect_mock
-        self.switch.ngs_config['vlan_translation_supported'] = True
-        mock_context.current = {'binding:profile':
-                                {'local_link_information':
-                                    [
-                                        {
-                                            'switch_info': 'foo',
-                                            'port_id': '2222'
-                                        }
-                                    ]
-                                 },
-                                'binding:vnic_type': 'baremetal',
-                                'id': 'aaaa-bbbb-cccc',
-                                'trunk_details': {'sub_ports':
-                                                  [{'segmentation_id': 123}]}}
-        trunk_details = {'sub_ports': [{'segmentation_id': 123}]}
-        self.switch.plug_port_to_network_trunk('2222', None,
-                                               trunk_details, vtr=False)
-        t_mock.assert_called_once_with(
-            self.switch, '2222', None,
-            {'sub_ports': [{'segmentation_id': 123}]})
-        self.assertFalse(nt_mock.called)
-
-    @mock.patch.object(netmiko_devices.netmiko, 'ConnectHandler',
-                       autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'send_commands_to_device', autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'get_trunk_port_cmds_no_vlan_translation',
-                       autospec=True)
-    @mock.patch.object(netmiko_devices.NetmikoSwitch,
-                       'get_trunk_port_cmds_vlan_translation', autospec=True)
-    def test_plug_port_trunk_no_vts_raise(self, t_mock, nt_mock, sctd_mock,
-                                          nm_mock):
-        connect_mock = mock.Mock()
-        nm_mock.return_value = connect_mock
-        self.switch.ngs_config['vlan_translation_supported'] = False
-        trunk_details = {'sub_ports': [{'segmentation_id': 123}]}
-        self.assertRaises(exc.GenericSwitchNotSupported,
-                          self.switch.plug_port_to_network_trunk, '2222', None,
-                          trunk_details, vtr=True)
-        self.assertFalse(t_mock.called)
-        self.assertFalse(nt_mock.called)

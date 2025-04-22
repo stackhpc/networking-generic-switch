@@ -37,15 +37,3 @@ class AristaEos(netmiko_devices.NetmikoSwitch):
         'no switchport mode trunk',
         'switchport trunk allowed vlan none'
     )
-
-    SET_NATIVE_VLAN = (
-        'interface {port}',
-        'switchport mode trunk',
-        'switchport trunk native vlan {segmentation_id}',
-        'switchport trunk allowed vlan add {segmentation_id}'
-    )
-
-    ALLOW_NETWORK_ON_TRUNK = (
-        'interface {port}',
-        'switchport trunk allowed vlan add {segmentation_id}'
-    )

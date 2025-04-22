@@ -14,8 +14,6 @@
 
 from unittest import mock
 
-from neutron.plugins.ml2 import driver_context
-
 from networking_generic_switch.devices.netmiko_devices import arista
 from networking_generic_switch.tests.unit.netmiko import test_netmiko_base
 
@@ -61,43 +59,6 @@ class TestNetmikoAristaEos(test_netmiko_base.NetmikoSwitchTestBase):
             ['interface 3333', 'no switchport access vlan 33',
              'no switchport mode trunk',
              'switchport trunk allowed vlan none'])
-
-    def test_get_trunk_port_cmds_no_vlan_translation(self):
-        mock_context = mock.create_autospec(driver_context.PortContext)
-        self.switch.ngs_config['vlan_translation_supported'] = False
-        trunk_details = {'trunk_id': 'aaa-bbb-ccc-ddd',
-                         'sub_ports': [{'segmentation_id': 130,
-                                        'port_id': 'aaa-bbb-ccc-ddd',
-                                        'segmentation_type': 'vlan',
-                                        'mac_address': u'fa:16:3e:1c:c2:7e'}]}
-        mock_context.current = {'binding:profile':
-                                {'local_link_information':
-                                    [
-                                        {
-                                            'switch_info': 'foo',
-                                            'port_id': '2222'
-                                        }
-                                    ]
-                                 },
-                                'binding:vnic_type': 'baremetal',
-                                'id': 'aaaa-bbbb-cccc',
-                                'trunk_details': trunk_details}
-        mock_context.network = mock.Mock()
-        mock_context.network.current = {'provider:segmentation_id': 123}
-        mock_context.segments_to_bind = [
-            {
-                'segmentation_id': 777,
-                'id': 123
-            }
-        ]
-        res = self.switch.get_trunk_port_cmds_no_vlan_translation(
-            '2222', 777, trunk_details)
-        self.assertEqual(['interface 2222', 'switchport mode trunk',
-                          'switchport trunk native vlan 777',
-                          'switchport trunk allowed vlan add 777',
-                          'interface 2222',
-                          'switchport trunk allowed vlan add 130'],
-                         res)
 
     def test__format_commands(self):
         cmd_set = self.switch._format_commands(
