@@ -117,8 +117,6 @@ class CumulusNVUE(netmiko_devices.NetmikoSwitch):
     ]
 
     PLUG_PORT_TO_NETWORK = [
-        'nv unset interface {port} bridge domain br_default vlan',
-        'nv unset interface {port} bridge domain br_default untagged',
         'nv set interface {port} bridge domain br_default access '
         '{segmentation_id}',
     ]
@@ -137,18 +135,6 @@ class CumulusNVUE(netmiko_devices.NetmikoSwitch):
 
     SAVE_CONFIGURATION = [
         'nv config save',
-    ]
-
-    SET_NATIVE_VLAN = [
-        'nv unset interface {port} bridge domain br_default access',
-        'nv set interface {port} bridge domain br_default untagged '
-        '{segmentation_id}',
-        'nv set interface {port} bridge domain br_default vlan '
-        '{segmentation_id}'
-    ]
-    ALLOW_NETWORK_ON_TRUNK = [
-        'nv set interface {port} bridge domain br_default vlan '
-        '{segmentation_id}'
     ]
 
     ERROR_MSG_PATTERNS = [

@@ -57,8 +57,6 @@ class TestNetmikoCumulusNVUE(test_netmiko_base.NetmikoSwitchTestBase):
             self.switch,
             ['nv set interface 3333 link state up',
              'nv unset interface 3333 bridge domain br_default access',
-             'nv unset interface 3333 bridge domain br_default vlan',
-             'nv unset interface 3333 bridge domain br_default untagged',
              'nv set interface 3333 bridge domain br_default access 33'])
 
     @mock.patch('networking_generic_switch.devices.netmiko_devices.'
@@ -91,9 +89,7 @@ class TestNetmikoCumulusNVUE(test_netmiko_base.NetmikoSwitchTestBase):
         switch.plug_port_to_network(3333, 33)
         mock_exec.assert_called_with(
             switch,
-            ['nv unset interface 3333 bridge domain br_default vlan',
-             'nv unset interface 3333 bridge domain br_default untagged',
-             'nv set interface 3333 bridge domain br_default access 33'])
+            ['nv set interface 3333 bridge domain br_default access 33'])
 
     @mock.patch('networking_generic_switch.devices.netmiko_devices.'
                 'NetmikoSwitch.send_commands_to_device',
@@ -104,8 +100,6 @@ class TestNetmikoCumulusNVUE(test_netmiko_base.NetmikoSwitchTestBase):
             self.switch,
             ['nv unset interface 3333 bridge domain br_default access',
              'nv set bridge domain br_default vlan 123',
-             'nv unset interface 3333 bridge domain br_default vlan',
-             'nv unset interface 3333 bridge domain br_default untagged',
              'nv set interface 3333 bridge domain br_default access 123',
              'nv set interface 3333 link state down'])
 
@@ -131,8 +125,6 @@ class TestNetmikoCumulusNVUE(test_netmiko_base.NetmikoSwitchTestBase):
             self.switch,
             ['nv set interface 3333 link state up',
              'nv unset interface 3333 bridge domain br_default access',
-             'nv unset interface 3333 bridge domain br_default vlan',
-             'nv unset interface 3333 bridge domain br_default untagged',
              'nv set interface 3333 bridge domain br_default access 33'])
 
     @mock.patch('networking_generic_switch.devices.netmiko_devices.'
@@ -146,9 +138,7 @@ class TestNetmikoCumulusNVUE(test_netmiko_base.NetmikoSwitchTestBase):
         switch.plug_bond_to_network(3333, 33)
         mock_exec.assert_called_with(
             switch,
-            ['nv unset interface 3333 bridge domain br_default vlan',
-             'nv unset interface 3333 bridge domain br_default untagged',
-             'nv set interface 3333 bridge domain br_default access 33'])
+            ['nv set interface 3333 bridge domain br_default access 33'])
 
     @mock.patch('networking_generic_switch.devices.netmiko_devices.'
                 'NetmikoSwitch.send_commands_to_device',
@@ -159,8 +149,6 @@ class TestNetmikoCumulusNVUE(test_netmiko_base.NetmikoSwitchTestBase):
             self.switch,
             ['nv unset interface 3333 bridge domain br_default access',
              'nv set bridge domain br_default vlan 123',
-             'nv unset interface 3333 bridge domain br_default vlan',
-             'nv unset interface 3333 bridge domain br_default untagged',
              'nv set interface 3333 bridge domain br_default access 123',
              'nv set interface 3333 link state down'])
 
