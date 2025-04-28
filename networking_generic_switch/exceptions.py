@@ -44,12 +44,19 @@ class GenericSwitchNetmikoNotSupported(GenericSwitchException):
 
 
 class GenericSwitchNetmikoConnectError(GenericSwitchException):
-    message = _("Netmiko connection error: %(config)s, error: %(error)s")
+    message = _("Failed to connect to Netmiko switch. "
+                "Please contact your administrator.")
 
 
 class GenericSwitchNetmikoConfigError(GenericSwitchException):
-    message = _("Netmiko configuration error: %(config)s, error: %(error)s")
+    message = _("Netmiko switch configuration operation failed. "
+                "Please contact your administrator.")
 
 
 class GenericSwitchBatchError(GenericSwitchException):
     message = _("Batching error: %(device)s, error: %(error)s")
+
+
+class GenericSwitchNotSupported(GenericSwitchException):
+    message = _("Requested feature %(feature)s is not supported by "
+                "networking-generic-switch on the %(switch)s. %(error)s")

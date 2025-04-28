@@ -26,11 +26,13 @@ import paramiko  # noqa - Must load after the patch
 import tenacity
 from tooz import coordination
 
+from networking_generic_switch._i18n import _
 from networking_generic_switch import batching
 from networking_generic_switch import devices
 from networking_generic_switch.devices import utils as device_utils
 from networking_generic_switch import exceptions as exc
 from networking_generic_switch import locking as ngs_lock
+from networking_generic_switch import utils as ngs_utils
 
 # NOTE(TheJulia) monkey patch paramiko's get_finerprint function
 # to use sha256 instead of md5, since Paramiko's maintainer doesn't
@@ -97,6 +99,22 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
     SAVE_CONFIGURATION = None
 
+    SET_NATIVE_VLAN = None
+
+    DELETE_NATIVE_VLAN = None
+
+    SET_NATIVE_VLAN_BOND = None
+
+    DELETE_NATIVE_VLAN_BOND = None
+
+    ADD_NETWORK_TO_TRUNK = None
+
+    REMOVE_NETWORK_FROM_TRUNK = None
+
+    ADD_NETWORK_TO_BOND_TRUNK = None
+
+    DELETE_NETWORK_ON_BOND_TRUNK = None
+
     ERROR_MSG_PATTERNS = ()
     """Sequence of error message patterns.
 
@@ -136,10 +154,13 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         self.batch_cmds = None
         if self._batch_requests():
             if not CONF.ngs_coordination.backend_url:
-                raise exc.GenericSwitchNetmikoConfigError(
-                    config=device_utils.sanitise_config(self.config),
-                    error="ngs_batch_requests is true but [ngs_coordination] "
-                          "backend_url is not provided")
+                error = ("ngs_batch_requests is true but [ngs_coordination] "
+                         "backend_url is not provided")
+                LOG.error(
+                    _("%(device)s, error: %(error)s"),
+                    {'device': device_utils.sanitise_config(self.config),
+                     'error': error})
+                raise exc.GenericSwitchNetmikoConfigError()
             # NOTE: we skip the lock if we are batching requests
             self.locker = None
             switch_name = self.lock_kwargs['locks_prefix']
@@ -151,6 +172,14 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 ('ngs-' + device_utils.get_hostname()).encode('ascii'))
             self.locker.start()
             atexit.register(self.locker.stop)
+
+    @property
+    def support_trunk_on_ports(self):
+        return bool(self.ADD_NETWORK_TO_TRUNK)
+
+    @property
+    def support_trunk_on_bond_ports(self):
+        return bool(self.ADD_NETWORK_TO_BOND_TRUNK)
 
     def _format_commands(self, commands, **kwargs):
         if not commands:
@@ -196,13 +225,19 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         try:
             net_connect = _create_connection()
         except tenacity.RetryError as e:
-            LOG.error("Reached maximum SSH connection attempts, not retrying")
-            raise exc.GenericSwitchNetmikoConnectError(
-                config=device_utils.sanitise_config(self.config), error=e)
+            LOG.error(
+                _("Reached maximum SSH connection attempts, not retrying "
+                  "for device: %(device)s, error: %(error)s"), {
+                      'device': device_utils.sanitise_config(self.config),
+                      'error': e})
+            raise exc.GenericSwitchNetmikoConnectError()
         except Exception as e:
-            LOG.error("Unexpected exception during SSH connection")
-            raise exc.GenericSwitchNetmikoConnectError(
-                config=device_utils.sanitise_config(self.config), error=e)
+            LOG.error(
+                _("Unexpected exception during SSH connection "
+                  "to device: %(device)s, error: %(error)s"), {
+                      'device': device_utils.sanitise_config(self.config),
+                      'error': e})
+            raise exc.GenericSwitchNetmikoConnectError()
 
         # Now yield the connection to the caller.
         with net_connect:
@@ -232,8 +267,12 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
             # module.
             raise
         except Exception as e:
-            raise exc.GenericSwitchNetmikoConnectError(
-                config=device_utils.sanitise_config(self.config), error=e)
+            LOG.error(
+                _("Error sending commands to device: %(device)s, "
+                  "error: %(error)s"), {
+                      'device': device_utils.sanitise_config(self.config),
+                      'error': e})
+            raise exc.GenericSwitchNetmikoConnectError()
 
         LOG.debug(output)
         return output
@@ -284,7 +323,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
         return self.send_commands_to_device(cmds)
 
     @check_output('plug port')
-    def plug_port_to_network(self, port, segmentation_id):
+    def plug_port_to_network(self, port, segmentation_id, trunk_details=None):
         cmds = []
         if self._disable_inactive_ports() and self.ENABLE_PORT:
             cmds += self._format_commands(self.ENABLE_PORT, port=port)
@@ -294,18 +333,38 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 self.DELETE_PORT,
                 port=port,
                 segmentation_id=ngs_port_default_vlan)
-        cmds += self._format_commands(
-            self.PLUG_PORT_TO_NETWORK,
-            port=port,
-            segmentation_id=segmentation_id)
+
+        if trunk_details:
+            cmds += self._format_commands(self.SET_NATIVE_VLAN,
+                                          port=port,
+                                          segmentation_id=segmentation_id)
+            for sub_port in trunk_details.get('sub_ports', []):
+                cmds += self._format_commands(
+                    self.ADD_NETWORK_TO_TRUNK, port=port,
+                    segmentation_id=sub_port['segmentation_id'])
+        else:
+            cmds += self._format_commands(
+                self.PLUG_PORT_TO_NETWORK,
+                port=port,
+                segmentation_id=segmentation_id)
+
         return self.send_commands_to_device(cmds)
 
     @check_output('unplug port')
-    def delete_port(self, port, segmentation_id):
+    def delete_port(self, port, segmentation_id, trunk_details=None):
         cmds = self._format_commands(self.DELETE_PORT,
                                      port=port,
                                      segmentation_id=segmentation_id)
         ngs_port_default_vlan = self._get_port_default_vlan()
+        if trunk_details:
+            cmds += self._format_commands(self.DELETE_NATIVE_VLAN,
+                                          port=port,
+                                          segmentation_id=segmentation_id)
+            for sub_port in trunk_details.get('sub_ports', []):
+                cmds += self._format_commands(
+                    self.REMOVE_NETWORK_FROM_TRUNK, port=port,
+                    segmentation_id=sub_port['segmentation_id'])
+
         if ngs_port_default_vlan:
             # NOTE(mgoddard): Pass network_id and segmentation_id for drivers
             # not yet using network_name.
@@ -322,14 +381,16 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 segmentation_id=ngs_port_default_vlan)
         if self._disable_inactive_ports() and self.DISABLE_PORT:
             cmds += self._format_commands(self.DISABLE_PORT, port=port)
+
         return self.send_commands_to_device(cmds)
 
     @check_output('plug bond')
-    def plug_bond_to_network(self, bond, segmentation_id):
+    def plug_bond_to_network(self, bond, segmentation_id, trunk_details=None):
         # Fallback to regular plug port if no specialist PLUG_BOND_TO_NETWORK
         # commands set
         if not self.PLUG_BOND_TO_NETWORK:
-            return self.plug_port_to_network(bond, segmentation_id)
+            return self.plug_port_to_network(bond, segmentation_id,
+                                             trunk_details=trunk_details)
         cmds = []
         if self._disable_inactive_ports() and self.ENABLE_BOND:
             cmds += self._format_commands(self.ENABLE_BOND, bond=bond)
@@ -339,22 +400,44 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 self.UNPLUG_BOND_FROM_NETWORK,
                 bond=bond,
                 segmentation_id=ngs_port_default_vlan)
-        cmds += self._format_commands(
-            self.PLUG_BOND_TO_NETWORK,
-            bond=bond,
-            segmentation_id=segmentation_id)
+
+        if trunk_details:
+            cmds += self._format_commands(self.SET_NATIVE_VLAN_BOND,
+                                          bond=bond,
+                                          segmentation_id=segmentation_id)
+            for sub_port in trunk_details.get('sub_ports', []):
+                cmds += self._format_commands(
+                    self.ADD_NETWORK_TO_BOND_TRUNK, bond=bond,
+                    segmentation_id=sub_port['segmentation_id'])
+        else:
+            cmds += self._format_commands(
+                self.PLUG_BOND_TO_NETWORK,
+                bond=bond,
+                segmentation_id=segmentation_id)
+
         return self.send_commands_to_device(cmds)
 
     @check_output('unplug bond')
-    def unplug_bond_from_network(self, bond, segmentation_id):
+    def unplug_bond_from_network(self, bond, segmentation_id,
+                                 trunk_details=None):
         # Fallback to regular port delete if no specialist
         # UNPLUG_BOND_FROM_NETWORK commands set
         if not self.UNPLUG_BOND_FROM_NETWORK:
-            return self.delete_port(bond, segmentation_id)
+            return self.delete_port(bond, segmentation_id,
+                                    trunk_details=trunk_details)
         cmds = self._format_commands(self.UNPLUG_BOND_FROM_NETWORK,
                                      bond=bond,
                                      segmentation_id=segmentation_id)
         ngs_port_default_vlan = self._get_port_default_vlan()
+        if trunk_details:
+            cmds += self._format_commands(self.DELETE_NATIVE_VLAN_BOND,
+                                          bond=bond,
+                                          segmentation_id=segmentation_id)
+            for sub_port in trunk_details.get('sub_ports', []):
+                cmds += self._format_commands(
+                    self.ADD_NETWORK_TO_BOND_TRUNK, bond=bond,
+                    segmentation_id=sub_port['segmentation_id'])
+
         if ngs_port_default_vlan:
             # NOTE(mgoddard): Pass network_id and segmentation_id for drivers
             # not yet using network_name.
@@ -371,6 +454,7 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
                 segmentation_id=ngs_port_default_vlan)
         if self._disable_inactive_ports() and self.DISABLE_BOND:
             cmds += self._format_commands(self.DISABLE_BOND, bond=bond)
+
         return self.send_commands_to_device(cmds)
 
     def send_config_set(self, net_connect, cmd_set):
@@ -418,9 +502,56 @@ class NetmikoSwitch(devices.GenericSwitchDevice):
 
         for pattern in self.ERROR_MSG_PATTERNS:
             if pattern.search(output):
-                msg = ("Found invalid configuration in device response. "
-                       "Operation: %(operation)s. Output: %(output)s" %
-                       {'operation': operation, 'output': output})
-                raise exc.GenericSwitchNetmikoConfigError(
-                    config=device_utils.sanitise_config(self.config),
-                    error=msg)
+                LOG.error(
+                    _("Found invalid configuration in device response. "
+                      "Operation: %(operation)s. Output: %(output)s. "
+                      "Device: %(device)s"), {
+                          'operation': operation, 'output': output,
+                          'device': device_utils.sanitise_config(self.config)
+                    })
+                raise exc.GenericSwitchNetmikoConfigError()
+
+    def add_subports_on_trunk(self, binding_profile, port_id, subports):
+        """Allow subports on trunk
+
+        :param binding_profile: Binding profile of parent port
+        :param port_id: The name of the switch port from
+               Local Link Information
+        :param subports: List with subports objects.
+        """
+        cmds = []
+        is_802_3ad = ngs_utils.is_802_3ad(binding_profile)
+
+        for sub_port in subports:
+            if is_802_3ad:
+                cmds += self._format_commands(
+                    self.ADD_NETWORK_TO_BOND_TRUNK, bond=port_id,
+                    segmentation_id=sub_port['segmentation_id'])
+            else:
+                cmds += self._format_commands(
+                    self.ADD_NETWORK_TO_TRUNK, port=port_id,
+                    segmentation_id=sub_port['segmentation_id'])
+        return self.send_commands_to_device(cmds)
+
+    def del_subports_on_trunk(self, binding_profile, port_id, subports):
+        """Allow subports on trunk
+
+        :param binding_profile: Binding profile of parent port
+        :param port_id: The name of the switch port from
+               Local Link Information
+        :param subports: List with subports objects.
+        """
+
+        cmds = []
+        is_802_3ad = ngs_utils.is_802_3ad(binding_profile)
+
+        for sub_port in subports:
+            if is_802_3ad:
+                cmds += self._format_commands(
+                    self.DELETE_NETWORK_ON_BOND_TRUNK, bond=port_id,
+                    segmentation_id=sub_port['segmentation_id'])
+            else:
+                cmds += self._format_commands(
+                    self.REMOVE_NETWORK_FROM_TRUNK, port=port_id,
+                    segmentation_id=sub_port['segmentation_id'])
+        return self.send_commands_to_device(cmds)
