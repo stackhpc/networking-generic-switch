@@ -15,10 +15,12 @@
 import abc
 
 from neutron_lib.utils.helpers import parse_mappings
+from oslo_concurrency import lockutils
 from oslo_log import log as logging
 from oslo_utils import strutils
 import stevedore
 
+from networking_generic_switch import config as gsw_conf
 from networking_generic_switch import exceptions as gsw_exc
 
 GENERIC_SWITCH_NAMESPACE = 'generic_switch.devices'
@@ -59,6 +61,20 @@ NGS_INTERNAL_OPTS = [
     {'name': 'ngs_allowed_vlans'},
     {'name': 'ngs_allowed_ports'},
 ]
+
+EM_SEMAPHORE = 'ngs_device_manager'
+DEVICES = {}
+
+
+@lockutils.synchronized(EM_SEMAPHORE)
+def get_devices():
+    global DEVICES
+    gsw_devices = gsw_conf.get_devices()
+    for device_name, device_cfg in gsw_devices.items():
+        if device_name in DEVICES:
+            continue
+        DEVICES[device_name] = device_manager(device_cfg, device_name)
+    return DEVICES
 
 
 def device_manager(device_cfg, device_name=""):
@@ -235,7 +251,7 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
                              trunk_details=None):
         """Plug port into network.
 
-        :param port_id: Then name of the switch interface
+        :param port_id: The name of the switch interface
         :param segmentation_id: VLAN identifier of the network used as access
                or native VLAN for port.
 
@@ -247,7 +263,7 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
     def delete_port(self, port_id, segmentation_id, trunk_details=None):
         """Delete port from specific network.
 
-        :param port_id: Then name of the switch interface
+        :param port_id: The name of the switch interface
         :param segmentation_id: VLAN identifier of the network used as access
                or native VLAN for port.
 
@@ -259,7 +275,7 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
                              trunk_details=None):
         """Plug bond port into network.
 
-        :param port_id: Then name of the switch interface
+        :param port_id: The name of the switch interface
         :param segmentation_id: VLAN identifier of the network used as access
                or native VLAN for port.
 
@@ -275,7 +291,7 @@ class GenericSwitchDevice(object, metaclass=abc.ABCMeta):
                                  trunk_details=None):
         """Unplug bond port from network.
 
-        :param port_id: Then name of the switch interface
+        :param port_id: The name of the switch interface
         :param segmentation_id: VLAN identifier of the network used as access
                or native VLAN for port.
 
