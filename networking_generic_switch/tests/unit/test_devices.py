@@ -239,3 +239,11 @@ class TestDeviceManager(unittest.TestCase):
 
         self.assertIsInstance(device.config["port"], int)
         self.assertEqual(device.config["port"], 2222)
+
+    def test_driver_load_config_override(self):
+        device_cfg = {"device_type": 'netmiko_ovs_linux',
+                      "vlan_translation_supported": True}
+        device = devices.device_manager(device_cfg)
+        self.assertIsInstance(device, devices.GenericSwitchDevice)
+        self.assertNotIn('vlan_translation_support', device.config)
+        self.assertTrue(device.ngs_config['vlan_translation_supported'])
