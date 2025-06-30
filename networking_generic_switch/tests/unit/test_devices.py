@@ -219,6 +219,27 @@ class TestDeviceManager(unittest.TestCase):
         }
         self.assertEqual(expected, algos)
 
+    def test_float_params_cast(self):
+        config = {
+            "device_type": 'netmiko_ovs_linux',
+            "ip": "10.1.2.3",
+            "username": "u",
+            "password": "p",
+            "conn_timeout": "20.0",
+            "global_delay_factor": "2.5",
+            "port": "2222",
+        }
+        device = devices.device_manager(config)
+
+        self.assertIsInstance(device.config["conn_timeout"], float)
+        self.assertEqual(device.config["conn_timeout"], 20.0)
+
+        self.assertIsInstance(device.config["global_delay_factor"], float)
+        self.assertEqual(device.config["global_delay_factor"], 2.5)
+
+        self.assertIsInstance(device.config["port"], int)
+        self.assertEqual(device.config["port"], 2222)
+
     def test_driver_load_config_override(self):
         device_cfg = {"device_type": 'netmiko_ovs_linux',
                       "vlan_translation_supported": True}
