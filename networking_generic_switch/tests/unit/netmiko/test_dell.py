@@ -123,6 +123,46 @@ class TestNetmikoDellNos(test_netmiko_base.NetmikoSwitchTestBase):
                          ['interface vlan 33', 'no tagged 3333', 'exit'])
 
 
+class TestNetmikoDellEnterpriseSonicCli(
+        test_netmiko_base.NetmikoSwitchTestBase):
+
+    def _make_switch_device(self, extra_cfg={}):
+        device_cfg = {'device_type': 'netmiko_dell_enterprise_sonic_cli'}
+        device_cfg.update(extra_cfg)
+        return dell.DellEnterpriseSonicCli(device_cfg)
+
+    @mock.patch('networking_generic_switch.devices.netmiko_devices.'
+                'NetmikoSwitch.send_commands_to_device', autospec=True)
+    def test_add_network(self, m_exec):
+        self.switch.add_network(33, '0ae071f5-5be9-43e4-80ea-e41fefe85b21')
+        m_exec.assert_called_with(
+            self.switch,
+            ['interface Vlan 33'])
+
+    @mock.patch('networking_generic_switch.devices.netmiko_devices.'
+                'NetmikoSwitch.send_commands_to_device', autospec=True)
+    def test_del_network(self, mock_exec):
+        self.switch.del_network(33, '0ae071f5-5be9-43e4-80ea-e41fefe85b21')
+        mock_exec.assert_called_with(self.switch,
+                                     ['no interface Vlan 33'])
+
+    @mock.patch('networking_generic_switch.devices.netmiko_devices.'
+                'NetmikoSwitch.send_commands_to_device', autospec=True)
+    def test_plug_port_to_network(self, mock_exec):
+        self.switch.plug_port_to_network(3333, 33)
+        mock_exec.assert_called_with(
+            self.switch,
+            ['interface 3333', 'switchport access Vlan 33'])
+
+    @mock.patch('networking_generic_switch.devices.netmiko_devices.'
+                'NetmikoSwitch.send_commands_to_device', autospec=True)
+    def test_delete_port(self, mock_exec):
+        self.switch.delete_port(3333, 33)
+        mock_exec.assert_called_with(
+            self.switch,
+            ['interface 3333', 'no switchport access Vlan'])
+
+
 class TestNetmikoDellOS10(test_netmiko_base.NetmikoSwitchTestBase):
 
     def _make_switch_device(self, extra_cfg={}):

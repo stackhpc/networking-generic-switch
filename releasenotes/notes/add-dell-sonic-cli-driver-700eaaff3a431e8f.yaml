@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    Adds Dell Enterprise SONiC CLI driver. This differs from the existing Dell
+    SONiC driver in that it uses the `sonic-cli` to administer the switch.
+    This ensures that the port names advertised via LLDP from the switch can
+    be used without conversion to the different naming scheme used in the
+    Linux userspace environment.

@@ -133,6 +133,70 @@ class DellNos(netmiko_devices.NetmikoSwitch):
     )
 
 
+class DellEnterpriseSonicCli(netmiko_devices.NetmikoSwitch):
+    """Netmiko device driver for Dell Enterprise switches.
+
+       Developed against SONiC-OS-4.2.3-Edge_Standard.
+
+       This driver uses the sonic-cli rather than Linux userspace to
+       configure the switch. This is because LLDP advertises switch
+       ports based on the naming from the sonic-cli, which is not the
+       same as Linux userspace.
+    """
+
+    NETMIKO_DEVICE_TYPE = "dell_sonic_ssh"
+
+    ADD_NETWORK = (
+        'interface Vlan {segmentation_id}',
+    )
+
+    DELETE_NETWORK = (
+        'no interface Vlan {segmentation_id}',
+    )
+
+    PLUG_PORT_TO_NETWORK = (
+        'interface {port}',
+        'switchport access Vlan {segmentation_id}',
+    )
+
+    DELETE_PORT = (
+        'interface {port}',
+        'no switchport access Vlan',
+    )
+
+    SAVE_CONFIGURATION = (
+        'copy running-configuration startup-configuration',
+    )
+
+    # TODO(dougszu): We need some typical failures to add here
+    ERROR_MSG_PATTERNS = []
+
+    def save_configuration(self, net_connect):
+        """Try to save the device's configuration.
+
+        :param net_connect: a netmiko connection object.
+        """
+        # NOTE(dougszu): We override this because the default
+        # method tries 'copy running-config startup-config' which
+        # is transformed by the switch to:
+        # 'copy running-configuration startup-configuration'.
+        for cmd in self.SAVE_CONFIGURATION:
+            net_connect.send_command(cmd)
+
+    def send_config_set(self, net_connect, cmd_set):
+        """Send a set of configuration lines to the device.
+
+        :param net_connect: a netmiko connection object.
+        :param cmd_set: a list of configuration lines to send.
+        :returns: The output of the configuration commands.
+        """
+        net_connect.enable()
+        # NOTE(dougszu): We override this so that we wait for commands
+        # to run before moving on.
+        return net_connect.send_config_set(config_commands=cmd_set,
+                                           cmd_verify=True)
+
+
 class DellPowerConnect(netmiko_devices.NetmikoSwitch):
     """Netmiko device driver for Dell PowerConnect switches."""
 
