@@ -44,7 +44,7 @@ class FakeConnection(object):
         if self.device.ngs_config.get('ngs_fake_failure_prob'):
             failure_prob = self.device.ngs_config['ngs_fake_failure_prob']
             if random.random() < float(failure_prob):
-                raise Exception("Random failure!")
+                raise Exception("Random failure!")  # noqa
 
         for cmd in config_commands:
             LOG.info("%s", cmd)
