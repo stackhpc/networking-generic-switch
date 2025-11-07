@@ -84,3 +84,27 @@ class Sonic(netmiko_devices.NetmikoSwitch):
         return net_connect.send_config_set(config_commands=cmd_set,
                                            cmd_verify=False,
                                            exit_config_mode=False)
+
+
+class DellEnterpriseSonic(Sonic):
+    """Netmiko device driver for Dell Enterprise switches.
+
+       Developed against SONiC-OS-4.2.3-Edge_Standard.
+
+       This driver must be used with the switch set to
+       standard or standard-extended naming mode. Do
+       not use the default setting of native.
+    """
+
+    def send_config_set(self, net_connect, cmd_set):
+        # Netmiko tries to use 'sudo -s' to open a root shell
+        # which doesn't work. It fails with:
+        # FATAL: root cannot launch CLI
+        net_connect.config_mode(config_command='sudo -i')
+
+        # Don't exit configuration mode, as config save requires
+        # root permissions.
+        # Verify commands have run before moving on
+        return net_connect.send_config_set(config_commands=cmd_set,
+                                           cmd_verify=True,
+                                           exit_config_mode=False)
