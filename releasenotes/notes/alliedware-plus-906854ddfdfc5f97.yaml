@@ -1,0 +1,5 @@
+---
+features:
+  - |
+    Adds a new device driver, ``netmiko_allied_telesis_awplus``, for managing
+    AlliedWare Plus switch devices.
