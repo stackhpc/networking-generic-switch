@@ -388,6 +388,7 @@ class GenericSwitchDriver(api.MechanismDriver):
                 trunk_details = port.get('trunk_details', {})
                 plug_kwargs = {}
                 if trunk_details:
+                    LOG.debug("trunk_details = %s" % trunk_details)
                     plug_kwargs["trunk_details"] = trunk_details
                 # Move port to network
                 if is_802_3ad:
